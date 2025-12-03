@@ -48,7 +48,7 @@
   
   .recenter-btn {
     position: fixed;
-    bottom: 120px;
+    bottom: 180px;
     right: 20px;
     width: 56px;
     height: 56px;
@@ -72,7 +72,7 @@
   
   .compass-btn {
     position: fixed;
-    bottom: 50px;
+    bottom: 110px;
     right: 20px;
     width: 56px;
     height: 56px;
@@ -108,14 +108,13 @@
     gap: 0.5rem;
     flex-wrap: wrap;
     justify-content: center;
-    max-width: 600px;
+    max-width: 800px;
     margin: 0 auto;
   }
   
   @media (max-width: 768px) {
     .toast { left: 1rem; right: 1rem; top: 1rem; }
-    .recenter-btn { bottom: 180px; }
-    .compass-btn { bottom: 110px; }
+    .control-panel { max-width: none; }
   }
 </style>
 </head>
@@ -227,7 +226,6 @@ function RepZoneApp() {
   const [trackingEnabled, setTrackingEnabled] = useState(false);
   const [mapHeading, setMapHeading] = useState(0);
   
-  const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
   const supabase = useRef(null);
   const locationWatchId = useRef(null);
@@ -395,16 +393,16 @@ function RepZoneApp() {
       map: mapInstanceRef.current,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
-        scale: 16,
+        scale: 20,
         fillColor: user?.color || '#64748b',
         fillOpacity: 1,
         strokeColor: verification ? verification.color : 'white',
-        strokeWeight: 3
+        strokeWeight: 4
       },
       label: {
         text: leadType.display,
         color: 'white',
-        fontSize: '12px',
+        fontSize: '14px',
         fontWeight: 'bold'
       }
     });
@@ -580,7 +578,7 @@ function RepZoneApp() {
             <option value="notinterested">📋 C - Not Int</option>
             <option value="flyer">📬 FD - Flyer</option>
           </select>
-          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note..." style={{padding:'0.75rem 1rem',border:'2px solid #e5e7eb',borderRadius:'0.75rem',fontSize:'0.875rem',fontWeight:'600',minWidth:'200px',flex:1}}/>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (gate code, dog, etc)..." style={{padding:'0.75rem 1rem',border:'2px solid #e5e7eb',borderRadius:'0.75rem',fontSize:'0.875rem',fontWeight:'600',minWidth:'250px',flex:1}}/>
         </div>
       )}
     </div>

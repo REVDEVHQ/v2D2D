@@ -164,15 +164,13 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const ADMIN_IDS = ['user-1760858671762', 'user-1760855853315'];
 
-const COLORS = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899"];
+const COLORS = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#78350f", "#94a3b8"];
 
 const LEAD_TYPES = {
   estimate: { icon: '💰', label: 'A - Estimate', color: '#10b981', display: 'A' },
-  callback: { icon: '📞', label: 'B - Callback 1-2 Weeks', color: '#f59e0b', display: 'B' },
-  notinterested: { icon: '📋', label: 'C - Not Interested (Has Info)', color: '#64748b', display: 'C' },
-  flyer: { icon: '📬', label: 'FD - Flyer Drop', color: '#3b82f6', display: 'FD' },
-  knocked: { icon: '✅', label: 'Knocked', color: '#16a34a', display: '✅' },
-  skipped: { icon: '⏭️', label: 'Skipped', color: '#ef4444', display: '⏭️' }
+  callback: { icon: '📞', label: 'B - Callback', color: '#f59e0b', display: 'B' },
+  notinterested: { icon: '📋', label: 'C - Not Interested', color: '#64748b', display: 'C' },
+  flyer: { icon: '📬', label: 'FD - Flyer', color: '#3b82f6', display: 'FD' }
 };
 
 const GPS_MAX_AGE_MS = 30000;
@@ -231,35 +229,7 @@ async function reverseGeocode(lat, lng) {
     
     if (response.results && response.results.length > 0) {
       const result = response.results[0];
-      const addressComponents = result.address_components;
-      
-      let houseNumber = '', street = '', city = '', state = '', postcode = '', suburb = '';
-      
-      addressComponents.forEach(component => {
-        if (component.types.includes('street_number')) houseNumber = component.long_name;
-        if (component.types.includes('route')) street = component.long_name;
-        if (component.types.includes('locality')) city = component.long_name;
-        if (component.types.includes('sublocality') || component.types.includes('neighborhood')) suburb = component.long_name;
-        if (component.types.includes('administrative_area_level_1')) state = component.short_name;
-        if (component.types.includes('postal_code')) postcode = component.long_name;
-      });
-      
-      const fullAddress = result.formatted_address;
-      const shortAddress = houseNumber && street ? `${houseNumber} ${street}` : street || suburb || city || 'Unknown';
-      
-      return { 
-        fullAddress, 
-        shortAddress, 
-        houseNumber, 
-        street, 
-        suburb, 
-        city, 
-        state, 
-        postcode, 
-        lat: result.geometry.location.lat(), 
-        lng: result.geometry.location.lng(), 
-        displayName: result.formatted_address 
-      };
+      return result.formatted_address;
     }
     return null;
   } catch (error) {
@@ -370,10 +340,7 @@ function RepZoneApp() {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [mode, setMode] = useState("drop-pin");
   const [status, setStatus] = useState("estimate");
-  const [activeZoneId, setActiveZoneId] = useState(null);
-  const [selectedZone, setSelectedZone] = useState(null);
   const [note, setNote] = useState("");
-  const [filter, setFilter] = useState({ status: "all", userId: "all" });
   const [activeTab, setActiveTab] = useState("map");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -386,7 +353,6 @@ function RepZoneApp() {
   const [leaderboardPeriod, setLeaderboardPeriod] = useState('week');
   const [leaderboardType, setLeaderboardType] = useState('d2d');
   const [trackingEnabled, setTrackingEnabled] = useState(false);
-  const [showLiveTracking, setShowLiveTracking] = useState(true);
   const [toastMessage, setToastMessage] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
@@ -397,12 +363,10 @@ function RepZoneApp() {
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
   const [customerEmail, setCustomerEmail] = useState('');
-  const [customerNote, setCustomerNote] = useState('');
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [calendarData, setCalendarData] = useState(null);
   const [pendingPinLocation, setPendingPinLocation] = useState(null);
   const [fdMode, setFdMode] = useState(false);
-  const [assignedZones, setAssignedZones] = useState([]);
   const [mapHeading, setMapHeading] = useState(0);
   const [zonePoints, setZonePoints] = useState([]);
 
@@ -416,27 +380,6 @@ function RepZoneApp() {
   const zonePolygonsRef = useRef([]);
   const liveMarkersRef = useRef([]);
   const drawingPolygonRef = useRef(null);
-
-  async function setSupabaseUser(userId) {
-    if (!userId || !supabase.current) return;
-    try {
-      await supabase.current.rpc('set_current_user', { user_id: userId });
-    } catch (e) {
-      console.error('Error setting user context:', e);
-    }
-  }
-
-  function handleModeChange(newMode) {
-    if (mode === "draw-zone" && newMode !== "draw-zone") {
-      setActiveZoneId(null);
-      setZonePoints([]);
-      if (drawingPolygonRef.current) {
-        drawingPolygonRef.current.setMap(null);
-        drawingPolygonRef.current = null;
-      }
-    }
-    setMode(newMode);
-  }
 
   function showToast(message, duration = 4000) {
     setToastMessage(message);
@@ -457,47 +400,19 @@ function RepZoneApp() {
     if (saved) {
       try {
         const user = JSON.parse(saved);
-        
-        // Verify user exists in database
         supabase.current.from('team_members')
           .select('*')
           .eq('id', user.id)
           .single()
-          .then(({ data, error }) => {
+          .then(({ data }) => {
             if (data) {
               setCurrentUser(data);
               requestLocationPermission(data);
-            } else if (error) {
-              console.error('User not found in database:', error);
-              localStorage.removeItem('current_user_id');
             }
           });
-      } catch (e) {
-        console.error('Error loading saved user:', e);
-      }
-    } else {
-      // Check for current location to enable map centering
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((position) => {
-          setCurrentLocation({ 
-            lat: position.coords.latitude, 
-            lng: position.coords.longitude, 
-            timestamp: Date.now() 
-          });
-        });
-      }
+      } catch (e) {}
     }
   }, []);
-
-  useEffect(() => {
-    if (currentUser && teamMembers.length > 0) {
-      const updatedUser = teamMembers.find(m => m.id === currentUser.id);
-      if (updatedUser && updatedUser.role !== currentUser.role) {
-        setCurrentUser(updatedUser);
-        localStorage.setItem('current_user_id', JSON.stringify(updatedUser));
-      }
-    }
-  }, [teamMembers, currentUser]);
 
   useEffect(() => {
     if (!supabase.current) return;
@@ -509,16 +424,29 @@ function RepZoneApp() {
   async function loadLiveLocations() {
     try {
       const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-      const { data, error } = await supabase.current
+      const { data } = await supabase.current
         .from('live_locations')
         .select('*')
         .gte('last_updated', fiveMinutesAgo)
         .eq('is_active', true);
       
-      if (!error && data) setLiveLocations(data);
-    } catch (e) {
-      console.error('Error loading live locations:', e);
-    }
+      if (data) setLiveLocations(data);
+    } catch (e) {}
+  }
+
+  async function loadData() {
+    try {
+      const [pinsRes, zonesRes, teamRes] = await Promise.all([
+        supabase.current.from('pins').select('*').order('created_at', { ascending: false }),
+        supabase.current.from('zones').select('*'),
+        supabase.current.from('team_members').select('*').order('role', { ascending: true })
+      ]);
+      
+      setPins(pinsRes.data || []);
+      setZones(zonesRes.data || []);
+      setTeamMembers(teamRes.data || []);
+    } catch (e) {}
+    setLoading(false);
   }
 
   async function requestLocationPermission(user) {
@@ -540,9 +468,7 @@ function RepZoneApp() {
           timestamp: Date.now() 
         });
       }, 
-      (error) => {
-        console.error('Location tracking error:', error);
-      }, 
+      () => {}, 
       { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
     );
     
@@ -551,22 +477,8 @@ function RepZoneApp() {
     }, 30000);
   }
 
-  function stopLocationTracking() {
-    if (locationWatchId.current) {
-      navigator.geolocation.clearWatch(locationWatchId.current);
-      locationWatchId.current = null;
-    }
-    if (locationUpdateInterval.current) {
-      clearInterval(locationUpdateInterval.current);
-      locationUpdateInterval.current = null;
-    }
-    setTrackingEnabled(false);
-    if (currentUser) updateLiveLocationInactive(currentUser.id);
-  }
-
   async function updateLiveLocation(userId, location) {
     try {
-      await setSupabaseUser(userId);
       await supabase.current.from('live_locations').upsert({ 
         team_member_id: userId, 
         lat: location.lat, 
@@ -577,21 +489,7 @@ function RepZoneApp() {
       }, { onConflict: 'team_member_id' });
       
       loadLiveLocations();
-    } catch (e) {
-      console.error('Error updating live location:', e);
-    }
-  }
-
-  async function updateLiveLocationInactive(userId) {
-    try {
-      await setSupabaseUser(userId);
-      await supabase.current
-        .from('live_locations')
-        .update({ is_active: false })
-        .eq('team_member_id', userId);
-    } catch (e) {
-      console.error('Error marking location inactive:', e);
-    }
+    } catch (e) {}
   }
 
   useEffect(() => {
@@ -600,180 +498,22 @@ function RepZoneApp() {
     }
   }, [currentLocation, currentUser, trackingEnabled]);
 
-  useEffect(() => () => stopLocationTracking(), []);
+  useEffect(() => () => {
+    if (locationWatchId.current) navigator.geolocation.clearWatch(locationWatchId.current);
+    if (locationUpdateInterval.current) clearInterval(locationUpdateInterval.current);
+  }, []);
 
-  async function loadData() {
-    try {
-      const [pinsRes, zonesRes, teamRes, assignedZonesRes] = await Promise.all([
-        supabase.current.from('pins').select('*').order('created_at', { ascending: false }),
-        supabase.current.from('zones').select('*'),
-        supabase.current.from('team_members').select('*').order('role', { ascending: true }),
-        supabase.current.from('assigned_zones').select('*').is('deleted_at', null)
-      ]);
-      
-      setPins(pinsRes.data || []);
-      setZones(zonesRes.data || []);
-      setTeamMembers(teamRes.data || []);
-      setAssignedZones(assignedZonesRes.data || []);
-    } catch (e) {
-      console.error('Error loading data:', e);
-    }
-    setLoading(false);
+  function selectCurrentUser(user) {
+    setCurrentUser(user);
+    localStorage.setItem('current_user_id', JSON.stringify(user));
+    requestLocationPermission(user);
   }
-
-  async function deletePin(pinId) {
-    if (!confirm('Delete this pin?')) return;
-    if (!currentUser) return;
-    
-    try {
-      await setSupabaseUser(currentUser.id);
-      await supabase.current.from('pins').delete().eq('id', pinId);
-      setPins(prev => prev.filter(p => p.id !== pinId));
-      showToast('✅ Pin deleted successfully!');
-    } catch (e) {
-      showToast('❌ Error deleting pin: ' + e.message);
-    }
-  }
-
-  async function updatePinStatus(pinId, newStatus) {
-    if (!currentUser) return;
-    
-    try {
-      await setSupabaseUser(currentUser.id);
-      await supabase.current.from('pins').update({ status: newStatus }).eq('id', pinId);
-      setPins(prev => prev.map(p => p.id === pinId ? {...p, status: newStatus} : p));
-      showToast(`✅ Updated to ${LEAD_TYPES[newStatus]?.label || newStatus}!`);
-    } catch (e) {
-      showToast('❌ Error updating pin: ' + e.message);
-    }
-  }
-
-  async function deleteUser(userId) {
-    if (!confirm('Delete this user? All their pins will remain.')) return;
-    
-    if (!ADMIN_IDS.includes(currentUser?.id)) {
-      showToast('⚠️ Only RDHQ and JOSE can delete users!');
-      return;
-    }
-    
-    try {
-      await setSupabaseUser(currentUser.id);
-      await supabase.current.from('team_members').delete().eq('id', userId);
-      setTeamMembers(prev => prev.filter(u => u.id !== userId));
-      if (currentUser?.id === userId) setCurrentUser(null);
-      setEditingUser(null);
-      showToast('✅ User deleted!');
-    } catch (e) {
-      showToast('❌ Error deleting user: ' + e.message);
-    }
-  }
-
-  async function updateUserRole(userId, newRole) {
-    if (!ADMIN_IDS.includes(currentUser?.id)) {
-      showToast('⚠️ Only RDHQ and JOSE can change roles!');
-      return;
-    }
-    
-    try {
-      await setSupabaseUser(currentUser.id);
-      await supabase.current.from('team_members').update({ role: newRole }).eq('id', userId);
-      setTeamMembers(prev => prev.map(u => u.id === userId ? {...u, role: newRole} : u));
-      
-      if (currentUser?.id === userId) {
-        const updatedUser = {...currentUser, role: newRole};
-        setCurrentUser(updatedUser);
-        localStorage.setItem('current_user_id', JSON.stringify(updatedUser));
-      }
-      
-      setEditingUser(null);
-      showToast(`✅ Role updated to ${newRole}!`);
-      loadData();
-    } catch (e) {
-      showToast('❌ Error updating role: ' + e.message);
-    }
-  }
-
-  async function assignZone(zoneId, userId) {
-    if (!ADMIN_IDS.includes(currentUser?.id)) {
-      showToast('⚠️ Only RDHQ and JOSE can assign zones!');
-      return;
-    }
-    
-    const member = teamMembers.find(m => m.id === userId);
-    
-    try {
-      await setSupabaseUser(currentUser.id);
-      await supabase.current
-        .from('zones')
-        .update({ assigned_to: userId, color: member?.color || COLORS[0] })
-        .eq('id', zoneId);
-      
-      setZones(prev => prev.map(z => z.id === zoneId ? {...z, assigned_to: userId, color: member?.color} : z));
-      setSelectedZone(null);
-      showToast(`✅ Zone assigned to ${member.name}!`);
-    } catch (e) {
-      showToast('❌ Error assigning zone: ' + e.message);
-    }
-  }
-
-  async function unassignZone(zoneId) {
-    if (!currentUser || currentUser.role !== 'admin') {
-      showToast('⚠️ Only admins can unassign zones!');
-      return;
-    }
-    
-    try {
-      await setSupabaseUser(currentUser.id);
-      await supabase.current.from('zones').update({ assigned_to: null }).eq('id', zoneId);
-      setZones(prev => prev.map(z => z.id === zoneId ? {...z, assigned_to: null} : z));
-      setSelectedZone(null);
-      showToast('✅ Zone unassigned!');
-    } catch (e) {
-      showToast('❌ Error unassigning zone: ' + e.message);
-    }
-  }
-
-  async function deleteZone(zoneId) {
-    if (!confirm('Delete this zone permanently?')) return;
-    
-    if (!ADMIN_IDS.includes(currentUser?.id)) {
-      showToast('⚠️ Only RDHQ and JOSE can delete zones!');
-      return;
-    }
-    
-    try {
-      await setSupabaseUser(currentUser.id);
-      await supabase.current.from('zones').delete().eq('id', zoneId);
-      setZones(prev => prev.filter(z => z.id !== zoneId));
-      setSelectedZone(null);
-      showToast('✅ Zone deleted!');
-    } catch (e) {
-      showToast('❌ Error deleting zone: ' + e.message);
-    }
-  }
-
-  useEffect(() => {
-    window.deletePinGlobal = deletePin;
-    window.updatePinStatusGlobal = updatePinStatus;
-    window.openGHLCalendarGlobal = openGHLCalendar;
-    window.showCalendarModal = (data) => {
-      setCalendarData(data);
-      setShowCalendarModal(true);
-    };
-    
-    return () => {
-      delete window.deletePinGlobal;
-      delete window.updatePinStatusGlobal;
-      delete window.openGHLCalendarGlobal;
-      delete window.showCalendarModal;
-    };
-  }, [currentUser]);
 
   async function addTeamMember() {
     if (!newUserName.trim()) return;
     
     if (!ADMIN_IDS.includes(currentUser?.id)) {
-      showToast('⚠️ Only RDHQ and JOSE can add team members!');
+      showToast('⚠️ Only admins can add members!');
       return;
     }
     
@@ -786,7 +526,6 @@ function RepZoneApp() {
     };
     
     try {
-      await setSupabaseUser(currentUser.id);
       const { data, error } = await supabase.current
         .from('team_members')
         .insert([newMember])
@@ -799,16 +538,62 @@ function RepZoneApp() {
       setNewUserName("");
       setNewUserRole("rep");
       setShowUserModal(false);
-      showToast(`✅ ${newUserName} added as ${newUserRole}!`);
+      showToast(`✅ ${newUserName} added!`);
     } catch (e) {
-      showToast('❌ Error adding team member: ' + e.message);
+      showToast('❌ Error: ' + e.message);
     }
   }
 
-  function selectCurrentUser(user) {
-    setCurrentUser(user);
-    localStorage.setItem('current_user_id', JSON.stringify(user));
-    requestLocationPermission(user);
+  async function deleteUser(userId) {
+    if (!confirm('Delete this user? All their pins will remain.')) return;
+    
+    if (!ADMIN_IDS.includes(currentUser?.id)) {
+      showToast('⚠️ Only admins can delete users!');
+      return;
+    }
+    
+    try {
+      await supabase.current.from('team_members').delete().eq('id', userId);
+      setTeamMembers(prev => prev.filter(u => u.id !== userId));
+      setEditingUser(null);
+      showToast('✅ User deleted!');
+    } catch (e) {
+      showToast('❌ Error: ' + e.message);
+    }
+  }
+
+  async function updateUserRole(userId, newRole) {
+    if (!ADMIN_IDS.includes(currentUser?.id)) {
+      showToast('⚠️ Only admins can change roles!');
+      return;
+    }
+    
+    try {
+      await supabase.current.from('team_members').update({ role: newRole }).eq('id', userId);
+      setTeamMembers(prev => prev.map(u => u.id === userId ? {...u, role: newRole} : u));
+      setEditingUser(null);
+      showToast(`✅ Role updated!`);
+      loadData();
+    } catch (e) {
+      showToast('❌ Error: ' + e.message);
+    }
+  }
+
+  async function deleteZone(zoneId) {
+    if (!confirm('Delete this zone?')) return;
+    
+    if (!ADMIN_IDS.includes(currentUser?.id)) {
+      showToast('⚠️ Only admins can delete zones!');
+      return;
+    }
+    
+    try {
+      await supabase.current.from('zones').delete().eq('id', zoneId);
+      setZones(prev => prev.filter(z => z.id !== zoneId));
+      showToast('✅ Zone deleted!');
+    } catch (e) {
+      showToast('❌ Error: ' + e.message);
+    }
   }
 
   function getLeaderboard() {
@@ -825,14 +610,16 @@ function RepZoneApp() {
       
       let count = 0;
       if (leaderboardType === 'd2d') {
+        // Only count "estimate" (A leads) for D2D
         if (leaderboardPeriod === 'week') {
-          count = weekPins.filter(p => ['estimate', 'callback', 'notinterested'].includes(p.status)).length;
+          count = weekPins.filter(p => p.status === 'estimate').length;
         } else if (leaderboardPeriod === 'day') {
-          count = dayPins.filter(p => ['estimate', 'callback', 'notinterested'].includes(p.status)).length;
+          count = dayPins.filter(p => p.status === 'estimate').length;
         } else {
-          count = memberPins.filter(p => ['estimate', 'callback', 'notinterested'].includes(p.status)).length;
+          count = memberPins.filter(p => p.status === 'estimate').length;
         }
       } else {
+        // Count all flyer drops
         if (leaderboardPeriod === 'week') {
           count = weekPins.filter(p => p.status === 'flyer').length;
         } else if (leaderboardPeriod === 'day') {
@@ -845,7 +632,7 @@ function RepZoneApp() {
       const liveLocation = liveLocations.find(l => l.team_member_id === member.id);
       const isOnline = liveLocation && new Date(liveLocation.last_updated) > new Date(Date.now() - 5 * 60 * 1000);
 
-      return { ...member, knockCount: count, isOnline, liveLocation };
+      return { ...member, knockCount: count, isOnline };
     }).sort((a, b) => b.knockCount - a.knockCount);
   }
 
@@ -888,9 +675,7 @@ function RepZoneApp() {
     if (mapInstanceRef.current && currentLocation) {
       mapInstanceRef.current.panTo({ lat: currentLocation.lat, lng: currentLocation.lng });
       mapInstanceRef.current.setZoom(21);
-      showToast('📍 Recentered on your location!');
-    } else {
-      showToast('⚠️ GPS location not available');
+      showToast('📍 Recentered!');
     }
   }
 
@@ -899,7 +684,7 @@ function RepZoneApp() {
       const newHeading = (mapHeading + 90) % 360;
       setMapHeading(newHeading);
       mapInstanceRef.current.setHeading(newHeading);
-      showToast(`🧭 Map rotated ${newHeading}°`);
+      showToast(`🧭 Rotated ${newHeading}°`);
     }
   }
 
@@ -910,8 +695,6 @@ function RepZoneApp() {
       center: { lat: 47.6062, lng: -122.3321 },
       zoom: 15,
       mapTypeId: 'satellite',
-      tilt: 0,
-      heading: 0,
       disableDefaultUI: true,
       zoomControl: true,
       zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_BOTTOM },
@@ -925,16 +708,11 @@ function RepZoneApp() {
     if (currentLocation) {
       map.setCenter({ lat: currentLocation.lat, lng: currentLocation.lng });
       map.setZoom(21);
-    } else if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition((position) => {
-        map.setCenter({ lat: position.coords.latitude, lng: position.coords.longitude });
-        map.setZoom(21);
-      });
     }
 
     map.addListener('click', handleMapClick);
     setMapReady(true);
-  }, [loading, isMobile]);
+  }, [loading]);
 
   async function handleMapClick(e) {
     const lat = e.latLng.lat();
@@ -947,26 +725,21 @@ function RepZoneApp() {
       }
       
       if (!isGPSFresh(currentLocation)) {
-        const age = getGPSAge(currentLocation);
-        showToast(`⚠️ GPS data is ${age}s old! Move around to get fresh GPS signal, then try again.`, 6000);
+        showToast(`⚠️ GPS data is stale!`);
         return;
       }
       
       if (fdMode) {
-        const originalStatus = status;
-        setStatus('flyer');
         await dropPinAtLocation(lat, lng, '', '', '', '');
-        setStatus(originalStatus);
       } else {
         setPendingPinLocation({ lat, lng });
         setShowCustomerForm(true);
       }
-    } else if (mode === "draw-zone") {
-      if (!ADMIN_IDS.includes(currentUser?.id)) {
-        showToast('⚠️ Only RDHQ and JOSE can create zones!');
+    } else if (mode === "draw-zone" && currentUser) {
+      if (!ADMIN_IDS.includes(currentUser.id)) {
+        showToast('⚠️ Only admins can create zones!');
         return;
       }
-      
       addZonePoint(lat, lng);
     }
   }
@@ -1012,13 +785,12 @@ function RepZoneApp() {
     };
     
     try {
-      await setSupabaseUser(currentUser.id);
       await supabase.current.from('zones').insert([newZone]);
       setZones(prev => [...prev, newZone]);
       cancelZoneDrawing();
       showToast('✅ Zone created!');
     } catch (e) {
-      showToast('❌ Error creating zone: ' + e.message);
+      showToast('❌ Error: ' + e.message);
     }
   }
 
@@ -1036,26 +808,9 @@ function RepZoneApp() {
     setGeocoding(true);
 
     try {
-      const addressData = await reverseGeocode(lat, lng);
-      let finalLat = lat, finalLng = lng, address = null, shortAddress = null;
-      
-      if (addressData && addressData.fullAddress !== 'Address Not Found') {
-        finalLat = addressData.lat;
-        finalLng = addressData.lng;
-        address = addressData.fullAddress;
-        shortAddress = addressData.shortAddress;
-        showToast(`📍 Found: ${shortAddress}`, 3000);
-      } else {
-        showToast('⚠️ No address found - saving location anyway', 3000);
-      }
-
-      const distance = calculateDistance(currentLocation.lat, currentLocation.lng, finalLat, finalLng);
+      const address = await reverseGeocode(lat, lng);
+      const distance = calculateDistance(currentLocation.lat, currentLocation.lng, lat, lng);
       const verification = getVerificationStatus(distance);
-      
-      const clickedZone = zones.find(z => {
-        if (!z.points || z.points.length < 3) return false;
-        return isPointInPolygon({ lat: finalLat, lng: finalLng }, z.points);
-      });
 
       let finalNote = note || null;
       if (custName) {
@@ -1066,13 +821,12 @@ function RepZoneApp() {
 
       const newPin = { 
         id: `pin-${Date.now()}`, 
-        lat: finalLat, 
-        lng: finalLng, 
+        lat, 
+        lng, 
         status: fdMode ? 'flyer' : status, 
-        address: address, 
+        address, 
         rep_name: currentUser.name, 
         team_member_id: currentUser.id, 
-        zone_id: clickedZone?.id || null, 
         note: finalNote, 
         actual_lat: currentLocation.lat, 
         actual_lng: currentLocation.lng, 
@@ -1081,28 +835,23 @@ function RepZoneApp() {
         created_at: new Date().toISOString() 
       };
       
-      await setSupabaseUser(currentUser.id);
-      const { error } = await supabase.current.from('pins').insert([newPin]).select();
+      const { error } = await supabase.current.from('pins').insert([newPin]);
       
       if (error) {
-        showToast('❌ Error saving pin: ' + error.message);
+        showToast('❌ Error: ' + error.message);
       } else {
         setPins(prev => [newPin, ...prev]);
         setNote("");
         
-        const leadTypeLabel = LEAD_TYPES[newPin.status]?.label || newPin.status;
-        const gpsAge = getGPSAge(currentLocation);
-        const custInfo = custName ? ` for ${custName}` : '';
-        
-        // Send to GHL if it's an estimate or callback with customer info
-        if (custName && (custEmail || custPhone) && ['estimate', 'callback'].includes(newPin.status)) {
+        // Send to GHL if it's an estimate with customer info
+        if (custName && (custEmail || custPhone) && newPin.status === 'estimate') {
           try {
             await sendContactToGHL({ 
               name: custName, 
               email: custEmail, 
               phone: custPhone, 
               address: address, 
-              leadType: leadTypeLabel, 
+              leadType: LEAD_TYPES[newPin.status].label, 
               repName: currentUser.name, 
               verified: verification.status === 'verified', 
               distance: Math.round(distance), 
@@ -1114,13 +863,7 @@ function RepZoneApp() {
           }
         }
         
-        if (verification.status === 'verified') {
-          showToast(`✅ ${leadTypeLabel}${custInfo} at ${shortAddress || 'location'}! (${Math.round(distance)}ft, GPS: ${gpsAge}s)`, 5000);
-        } else if (verification.status === 'suspicious') {
-          showToast(`⚠️ ${leadTypeLabel}${custInfo} saved but ${Math.round(distance)}ft away - marked suspicious`, 5000);
-        } else {
-          showToast(`⚠️ ${leadTypeLabel}${custInfo} saved (${Math.round(distance)}ft - questionable)`, 5000);
-        }
+        showToast(`✅ ${LEAD_TYPES[newPin.status]?.label} dropped!`);
       }
     } catch (error) {
       showToast('❌ Error: ' + error.message);
@@ -1133,7 +876,6 @@ function RepZoneApp() {
     setCustomerName('');
     setCustomerPhone('');
     setCustomerEmail('');
-    setCustomerNote('');
   }
 
   useEffect(() => {
@@ -1142,15 +884,9 @@ function RepZoneApp() {
     markersRef.current.forEach(marker => marker.setMap(null));
     markersRef.current = [];
 
-    const filtered = pins.filter(p => {
-      if (filter.status !== "all" && p.status !== filter.status) return false;
-      if (filter.userId !== "all" && p.team_member_id !== filter.userId) return false;
-      return true;
-    });
-
-    filtered.forEach(pin => {
+    pins.forEach(pin => {
       const user = teamMembers.find(u => u.id === pin.team_member_id);
-      const leadType = LEAD_TYPES[pin.status] || LEAD_TYPES.knocked;
+      const leadType = LEAD_TYPES[pin.status] || LEAD_TYPES.flyer;
       const verification = pin.verification_status ? getVerificationStatus(pin.distance_from_pin || 0) : null;
       
       const marker = new google.maps.Marker({
@@ -1172,53 +908,9 @@ function RepZoneApp() {
         }
       });
 
-      let customerInfo = null, displayNote = pin.note || '';
-      if (pin.note && pin.note.includes(' - ') && pin.note.includes('@')) {
-        const parts = pin.note.split(' | ');
-        const custPart = parts[0];
-        displayNote = parts[1] || '';
-        const custDetails = custPart.split(' - ');
-        if (custDetails.length >= 2) {
-          customerInfo = { 
-            name: custDetails[0], 
-            email: custDetails[1], 
-            phone: custDetails[2] || null 
-          };
-        }
-      }
-      
-      const infoWindow = new google.maps.InfoWindow({
-        content: `
-          <div style="min-width:240px;padding:0;font-family:-apple-system,sans-serif;border-radius:12px;overflow:hidden">
-            <div style="background:linear-gradient(135deg, ${leadType.color} 0%, ${leadType.color}dd 100%);padding:16px;color:white">
-              <div style="font-size:24px;margin-bottom:4px">${leadType.icon}</div>
-              <div style="font-size:18px;font-weight:700">${leadType.label}${customerInfo ? ` - ${customerInfo.name}` : ''}</div>
-            </div>
-            <div style="padding:16px;background:white">
-              ${pin.address ? `<div style="padding:12px;background:#f8fafc;border-left:4px solid #64748b;margin-bottom:12px;border-radius:6px"><div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:6px">📍 ADDRESS</div><div style="font-weight:600;color:#1e293b;font-size:13px;line-height:1.5;margin-bottom:8px">${pin.address}</div>${customerInfo ? `<div style="border-top:1px solid #e2e8f0;padding-top:8px;margin-top:8px">${customerInfo.email ? `<div style="color:#3b82f6;font-size:13px;margin-bottom:4px;display:flex;align-items:center;gap:6px"><span>📧</span><span>${customerInfo.email}</span></div>` : ''}${customerInfo.phone ? `<div style="color:#3b82f6;font-size:13px;display:flex;align-items:center;gap:6px"><span>📞</span><span>${customerInfo.phone}</span></div>` : ''}</div>` : ''}</div>` : ''}
-              <div style="padding:10px;background:${user?.color || '#64748b'}15;border-left:4px solid ${user?.color || '#64748b'};margin-bottom:12px;border-radius:6px"><div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:4px">👤 REP</div><div style="font-weight:700;color:${user?.color || '#64748b'};font-size:14px">${pin.rep_name || 'Unknown'}</div></div>
-              ${displayNote ? `<div style="padding:10px;background:#f8fafc;border-left:4px solid #64748b;margin-bottom:12px;border-radius:6px"><div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:4px">📝 NOTE</div><div style="color:#1e293b;font-size:13px">${displayNote}</div></div>` : ''}
-              ${verification ? `<div style="padding:12px;background:${verification.color}15;border-left:4px solid ${verification.color};margin-bottom:12px;border-radius:6px"><div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><span style="font-size:24px">${verification.icon}</span><div><div style="font-weight:700;color:${verification.color};font-size:15px">${verification.label}</div><div style="font-size:13px;color:#64748b;margin-top:2px">Distance: <b>${pin.distance_from_pin} feet</b></div></div></div></div>` : ''}
-              <div style="font-size:12px;color:#94a3b8;margin-bottom:14px;text-align:center">${new Date(pin.created_at).toLocaleString()}</div>
-              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">${Object.entries(LEAD_TYPES).slice(0,3).map(([key, type]) => `<button onclick="window.updatePinStatusGlobal('${pin.id}','${key}')" class="modern-button" style="padding:10px 6px;background:${type.color};color:white;border:none;border-radius:8px;font-size:16px;font-weight:700;box-shadow:0 2px 6px ${type.color}40">${type.display}</button>`).join('')}</div>
-              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px">${Object.entries(LEAD_TYPES).slice(3).map(([key, type]) => `<button onclick="window.updatePinStatusGlobal('${pin.id}','${key}')" class="modern-button" style="padding:10px 6px;background:${type.color};color:white;border:none;border-radius:8px;font-size:16px;font-weight:700;box-shadow:0 2px 6px ${type.color}40">${type.display}</button>`).join('')}</div>
-              ${customerInfo ? `<button onclick="window.openGHLCalendarGlobal('${customerInfo.name}','${customerInfo.email || ''}','${customerInfo.phone || ''}','${pin.address || ''}')" class="modern-button" style="width:100%;padding:12px;background:#10b981;color:white;border:none;border-radius:10px;font-weight:700;font-size:14px;margin-bottom:8px;box-shadow:0 2px 8px rgba(16,185,129,0.3)">📅 Book Appointment</button>` : ''}
-              <button onclick="window.deletePinGlobal('${pin.id}')" class="modern-button" style="width:100%;padding:12px;background:#ef4444;color:white;border:none;border-radius:10px;font-weight:700;font-size:14px;box-shadow:0 2px 8px rgba(239,68,68,0.3)">🗑️ Delete Pin</button>
-            </div>
-          </div>
-        `,
-        maxWidth: 280
-      });
-      
-      marker.addListener('click', () => {
-        markersRef.current.forEach(m => { if (m.infoWindow) m.infoWindow.close(); });
-        infoWindow.open(mapInstanceRef.current, marker);
-      });
-      
-      marker.infoWindow = infoWindow;
       markersRef.current.push(marker);
     });
-  }, [pins, filter, teamMembers, mapReady]);
+  }, [pins, teamMembers, mapReady]);
 
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current) return;
@@ -1228,55 +920,23 @@ function RepZoneApp() {
 
     zones.forEach(zone => {
       if (zone.points?.length >= 3) {
-        const assigned = teamMembers.find(u => u.id === zone.assigned_to);
         const polygon = new google.maps.Polygon({
           paths: zone.points,
-          strokeColor: assigned?.color || zone.color,
+          strokeColor: zone.color,
           strokeOpacity: 0.8,
           strokeWeight: 3,
-          fillColor: assigned?.color || zone.color,
+          fillColor: zone.color,
           fillOpacity: 0.2,
-          map: mapInstanceRef.current,
-          clickable: mode === "select"
+          map: mapInstanceRef.current
         });
-
-        if (mode === "select") {
-          const infoWindow = new google.maps.InfoWindow();
-          polygon.addListener('click', (e) => {
-            infoWindow.setContent(`
-              <div style="padding:12px;min-width:180px;font-family:-apple-system,sans-serif">
-                <b style="font-size:17px;color:#1e293b">${zone.name}</b><br>
-                <div style="margin-top:8px">
-                  ${assigned ? `<span style="color:${assigned.color};font-weight:600;font-size:15px">👤 ${assigned.name}</span>` : '<span style="color:#64748b;font-weight:600">⚠️ Unassigned</span>'}
-                </div>
-                <div style="margin-top:8px;font-size:13px;color:#64748b">Click to manage zone</div>
-              </div>
-            `);
-            infoWindow.setPosition(e.latLng);
-            infoWindow.open(mapInstanceRef.current);
-            setSelectedZone(zone);
-          });
-        }
-        
         zonePolygonsRef.current.push(polygon);
       }
     });
-  }, [zones, teamMembers, mode, mapReady]);
+  }, [zones, mapReady]);
 
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !currentLocation || !currentUser) return;
     if (userMarkerRef.current) userMarkerRef.current.setMap(null);
-
-    new google.maps.Circle({ 
-      map: mapInstanceRef.current, 
-      center: { lat: currentLocation.lat, lng: currentLocation.lng }, 
-      radius: currentLocation.accuracy || 50, 
-      fillColor: currentUser.color, 
-      fillOpacity: 0.15, 
-      strokeColor: currentUser.color, 
-      strokeOpacity: 0.4, 
-      strokeWeight: 2 
-    });
 
     const arrowPath = 'M 0,-24 L 12,24 L 0,18 L -12,24 Z';
     userMarkerRef.current = new google.maps.Marker({ 
@@ -1294,25 +954,10 @@ function RepZoneApp() {
       }, 
       zIndex: 1000 
     });
-
-    const gpsAge = getGPSAge(currentLocation);
-    const isFresh = isGPSFresh(currentLocation);
-    const infoWindow = new google.maps.InfoWindow({ 
-      content: `
-        <div style="padding:14px;text-align:center;font-family:-apple-system,sans-serif">
-          <div style="font-weight:700;font-size:18px;color:${currentUser.color};margin-bottom:6px">📍 You Are Here</div>
-          <div style="font-size:13px;color:#64748b">GPS: ${gpsAge}s old ${isFresh ? '✅' : '⚠️ Stale'}</div>
-        </div>
-      ` 
-    });
-    
-    userMarkerRef.current.addListener('click', () => { 
-      infoWindow.open(mapInstanceRef.current, userMarkerRef.current); 
-    });
   }, [currentLocation, currentUser, mapReady]);
 
   useEffect(() => {
-    if (!mapReady || !mapInstanceRef.current || !showLiveTracking) return;
+    if (!mapReady || !mapInstanceRef.current) return;
     
     liveMarkersRef.current.forEach(marker => marker.setMap(null));
     liveMarkersRef.current = [];
@@ -1321,61 +966,34 @@ function RepZoneApp() {
       const member = teamMembers.find(m => m.id === loc.team_member_id);
       if (!member || loc.team_member_id === currentUser?.id) return;
 
-      const minutesAgo = Math.floor((Date.now() - new Date(loc.last_updated)) / 60000);
-      const isRecent = minutesAgo < 5;
-
-      new google.maps.Circle({ 
-        map: mapInstanceRef.current, 
-        center: { lat: loc.lat, lng: loc.lng }, 
-        radius: 35, 
-        fillColor: member.color, 
-        fillOpacity: isRecent ? 0.4 : 0.2, 
-        strokeColor: member.color, 
-        strokeWeight: 3 
-      });
-
       const marker = new google.maps.Marker({ 
         position: { lat: loc.lat, lng: loc.lng }, 
         map: mapInstanceRef.current, 
         icon: { 
           path: google.maps.SymbolPath.CIRCLE, 
-          scale: 24, 
+          scale: 20, 
           fillColor: member.color, 
-          fillOpacity: 1, 
+          fillOpacity: 0.8, 
           strokeColor: 'white', 
-          strokeWeight: 4 
+          strokeWeight: 3 
         }, 
         label: { 
           text: member.name.charAt(0), 
           color: 'white', 
-          fontSize: '16px', 
+          fontSize: '14px', 
           fontWeight: 'bold' 
         } 
       });
 
-      const infoWindow = new google.maps.InfoWindow({ 
-        content: `
-          <div style="padding:12px;text-align:center;font-family:-apple-system,sans-serif">
-            <div style="font-weight:700;font-size:16px;color:${member.color};margin-bottom:4px">${member.name}</div>
-            <div style="font-size:13px;color:#64748b">${minutesAgo} min ago</div>
-          </div>
-        ` 
-      });
-      
-      marker.addListener('click', () => { 
-        infoWindow.open(mapInstanceRef.current, marker); 
-      });
-      
       liveMarkersRef.current.push(marker);
     });
-  }, [liveLocations, teamMembers, currentUser, showLiveTracking, mapReady]);
+  }, [liveLocations, teamMembers, currentUser, mapReady]);
 
   if (loading) {
     return (
       <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'100vh',flexDirection:'column',gap:'1.5rem',background:'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'}}>
         <div style={{fontSize:'5rem',animation:'bounce 1s infinite'}}>🏠</div>
-        <h1 style={{color:'white',fontSize:'2.5rem',fontWeight:'bold',marginBottom:'0.5rem',textAlign:'center'}}>RepZone V2</h1>
-        <p style={{color:'rgba(255,255,255,0.9)',fontSize:'1.125rem',textAlign:'center'}}>Loading Google Maps...</p>
+        <h1 style={{color:'white',fontSize:'2.5rem',fontWeight:'bold'}}>RepZone V2</h1>
         <div className="spinner" style={{width:'50px',height:'50px',borderWidth:'4px'}}></div>
       </div>
     );
@@ -1385,25 +1003,13 @@ function RepZoneApp() {
     totalPins: currentUser ? pins.filter(p => p.team_member_id === currentUser.id).length : 0,
     estimates: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.status === 'estimate').length : 0,
     callbacks: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.status === 'callback').length : 0,
-    notinterested: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.status === 'notinterested').length : 0,
-    flyers: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.status === 'flyer').length : 0,
-    knocked: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.status === 'knocked').length : 0,
-    verified: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.verification_status === 'verified').length : 0,
-    suspicious: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.verification_status === 'suspicious').length : 0,
-    onlineUsers: liveLocations.filter(l => new Date(l.last_updated) > new Date(Date.now() - 5 * 60 * 1000)).length,
-    withAddress: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.address).length : 0,
-    withoutAddress: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && !p.address).length : 0
+    flyers: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.status === 'flyer').length : 0
   };
 
-  const leaderboard = getLeaderboard();
   const gpsAge = currentLocation ? getGPSAge(currentLocation) : null;
   const gpsIsFresh = currentLocation ? isGPSFresh(currentLocation) : false;
+  const leaderboard = getLeaderboard();
   const isAdmin = ADMIN_IDS.includes(currentUser?.id);
-  
-  const filteredLeads = pins.filter(p => {
-    if (p.status === 'flyer' || p.status === 'skipped' || p.status === 'knocked') return false;
-    return true;
-  });
 
   return (
     <div>
@@ -1428,7 +1034,6 @@ function RepZoneApp() {
                   setCustomerName(''); 
                   setCustomerPhone(''); 
                   setCustomerEmail(''); 
-                  setCustomerNote(''); 
                 }} 
                 className="modal-close"
               >×</button>
@@ -1462,16 +1067,6 @@ function RepZoneApp() {
                 className="input-field"
               />
             </div>
-            <div style={{marginBottom:'1.5rem'}}>
-              <label className="label-text">Note <span className="label-optional">(optional)</span></label>
-              <textarea 
-                value={customerNote} 
-                onChange={(e) => setCustomerNote(e.target.value)} 
-                placeholder="Gate code, dog in yard, callback time..." 
-                rows={2} 
-                className="textarea-field"
-              />
-            </div>
             <button 
               onClick={async () => { 
                 await dropPinAtLocation(
@@ -1480,7 +1075,7 @@ function RepZoneApp() {
                   customerName, 
                   customerPhone, 
                   customerEmail, 
-                  customerNote
+                  ''
                 ); 
               }} 
               className="btn-primary"
@@ -1491,30 +1086,25 @@ function RepZoneApp() {
 
       {(saving || geocoding) && (
         <div className="loading-overlay">
-          <div className="spinner" style={{width:'40px',height:'40px',borderWidth:'4px',borderTopColor:'#3b82f6'}}></div>
+          <div className="spinner" style={{width:'40px',height:'40px'}}></div>
           <span className="loading-text">{geocoding ? '🏠 Finding Address...' : '💾 Saving...'}</span>
         </div>
       )}
 
-      {trackingEnabled && !isMobile && (
-        <div style={{
-          position:'fixed',
-          top:'1rem',
-          right:'1rem',
-          background:gpsIsFresh?'#10b981':'#f59e0b',
-          color:'white',
-          padding:'0.875rem 1.5rem',
-          borderRadius:'2rem',
-          boxShadow:'0 6px 16px rgba(0,0,0,0.2)',
-          zIndex:10001,
-          display:'flex',
-          gap:'0.875rem',
-          alignItems:'center',
-          fontSize:'0.9375rem',
-          fontWeight:'700'
-        }}>
-          <div style={{width:'14px',height:'14px',background:'white',borderRadius:'50%',animation:'pulse 2s infinite'}}></div>
-          <span>GPS {gpsAge !== null ? `${gpsAge}s` : 'Active'} {gpsIsFresh ? '✅' : '⚠️'}</span>
+      {showCalendarModal && calendarData && (
+        <div className="modal-overlay" onClick={() => setShowCalendarModal(false)}>
+          <div className="modal-content" style={{maxWidth:'700px'}} onClick={(e) => e.stopPropagation()}>
+            <h2 style={{fontSize:'1.5rem',fontWeight:'700',color:'#1e293b',marginBottom:'1rem'}}>📅 Book Estimate</h2>
+            <iframe
+              src={GHL_CONFIG.calendarUrls.general}
+              style={{width:'100%',height:'600px',border:'none',borderRadius:'1rem'}}
+            />
+            <button
+              onClick={() => setShowCalendarModal(false)}
+              className="btn-secondary"
+              style={{width:'100%',marginTop:'1rem'}}
+            >Close</button>
+          </div>
         </div>
       )}
 
@@ -1537,12 +1127,8 @@ function RepZoneApp() {
                       justifyContent:'center',
                       color:'white',
                       fontWeight:'bold',
-                      fontSize:'1.5rem',
-                      flexShrink:0,
-                      boxShadow:'0 4px 12px rgba(0,0,0,0.15)'
-                    }}>
-                      {member.name.charAt(0)}
-                    </div>
+                      fontSize:'1.5rem'
+                    }}>{member.name.charAt(0)}</div>
                     <div>
                       <div style={{fontWeight:'700',fontSize:'1.125rem',color:'#1e293b'}}>{member.name}</div>
                       <div style={{fontSize:'0.8125rem',color:'#64748b',fontWeight:'600'}}>{member.role}</div>
@@ -1597,7 +1183,6 @@ function RepZoneApp() {
               placeholder="Full Name" 
               className="input-field"
               style={{marginBottom:'1rem'}}
-              onKeyPress={e => e.key === 'Enter' && addTeamMember()}
             />
             <select 
               value={newUserRole} 
@@ -1606,7 +1191,7 @@ function RepZoneApp() {
               style={{marginBottom:'1.5rem'}}
             >
               <option value="rep">👤 Rep</option>
-              <option value="flyer">📬 Flyer Marketer</option>
+              <option value="flyer">📬 Flyer</option>
               <option value="admin">⭐ Admin</option>
             </select>
             <div style={{display:'flex',gap:'0.75rem'}}>
@@ -1614,7 +1199,7 @@ function RepZoneApp() {
                 onClick={addTeamMember} 
                 className="btn-primary" 
                 style={{flex:1}}
-              >Add Member</button>
+              >Add</button>
               <button 
                 onClick={() => {
                   setShowUserModal(false); 
@@ -1629,504 +1214,402 @@ function RepZoneApp() {
         </div>
       )}
 
-      {showCalendarModal && calendarData && (
-        <div className="modal-overlay" onClick={() => setShowCalendarModal(false)}>
-          <div className="modal-content" style={{maxWidth:'700px'}} onClick={(e) => e.stopPropagation()}>
-            <h2 style={{fontSize:'1.5rem',fontWeight:'700',color:'#1e293b',marginBottom:'1rem'}}>📅 Book Estimate</h2>
-            <iframe
-              src={GHL_CONFIG.calendarUrls.general}
-              style={{width:'100%',height:'600px',border:'none',borderRadius:'1rem'}}
-            />
-            <button
-              onClick={() => setShowCalendarModal(false)}
-              className="btn-secondary"
-              style={{width:'100%',marginTop:'1rem'}}
-            >Close</button>
-          </div>
-        </div>
-  )}
+      <button 
+        className="hamburger-btn" 
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+      >
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
 
-  <button 
-    className="hamburger-btn" 
-    onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-  >
-    <span></span>
-    <span></span>
-    <span></span>
-  </button>
-
-  <div 
-    className={`${isMobile ? 'mobile-dropdown' : 'desktop-sidebar'} ${mobileMenuOpen ? 'open' : ''}`} 
-    style={{
-      flexDirection:'column',
-      background:'white',
-      borderRadius:isMobile?0:'1.5rem',
-      boxShadow:'0 8px 32px rgba(0,0,0,0.15)',
-      overflow:'hidden'
-    }}
-  >
-    <div style={{padding:'1.5rem',borderBottom:'1px solid #e5e7eb'}}>
-      <h1 style={{fontSize:'1.875rem',fontWeight:'700',color:'#1e293b',marginBottom:'0.25rem'}}>🏠 RepZone V2</h1>
-      <p style={{fontSize:'0.875rem',color:'#64748b'}}>Door Knocking Tracker</p>
-      
-      {currentUser && (
-        <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginTop:'1rem',padding:'1rem',background:'#f8fafc',borderRadius:'1rem'}}>
-          <div style={{
-            width:'48px',
-            height:'48px',
-            borderRadius:'50%',
-            background:currentUser.color,
-            display:'flex',
-            alignItems:'center',
-            justifyContent:'center',
-            color:'white',
-            fontWeight:'700',
-            fontSize:'1.25rem'
-          }}>
-            {currentUser.name.charAt(0)}
-          </div>
-          <div style={{flex:1}}>
-            <div style={{fontWeight:'600',color:'#1e293b'}}>{currentUser.name}</div>
-            <div style={{fontSize:'0.75rem',color:'#64748b',textTransform:'uppercase'}}>{currentUser.role}</div>
-          </div>
-          <button 
-            onClick={() => {
-              if (confirm('Switch user?')) {
-                setCurrentUser(null);
-                localStorage.removeItem('current_user_id');
-              }
-            }} 
-            style={{
-              padding:'0.5rem 1rem',
-              background:'#e5e7eb',
-              border:'none',
-              borderRadius:'0.5rem',
-              fontSize:'0.875rem',
-              fontWeight:'600',
-              cursor:'pointer'
-            }}
-          >Switch</button>
-        </div>
-      )}
-    </div>
-
-    <div style={{display:'flex',borderBottom:'1px solid #e5e7eb'}}>
       <div 
-        className={`tab ${activeTab==='map'?'active':''}`} 
-        onClick={()=>setActiveTab('map')} 
-        style={{flex:1,textAlign:'center'}}
-      >🗺️ Map</div>
-      <div 
-        className={`tab ${activeTab==='stats'?'active':''}`} 
-        onClick={()=>setActiveTab('stats')} 
-        style={{flex:1,textAlign:'center'}}
-      >📊 Stats</div>
-      <div 
-        className={`tab ${activeTab==='leaderboard'?'active':''}`} 
-        onClick={()=>setActiveTab('leaderboard')} 
-        style={{flex:1,textAlign:'center'}}
-      >🏆 Leaders</div>
-      <div 
-        className={`tab ${activeTab==='crm'?'active':''}`} 
-        onClick={()=>setActiveTab('crm')} 
-        style={{flex:1,textAlign:'center'}}
-      >📋 CRM</div>
-    </div>
-
-    <div style={{flex:1,overflowY:'auto',padding:'1.5rem'}}>
-      {activeTab === 'map' && (
-        <>
-          <div className="stat-card" style={{marginBottom:'1rem'}}>
-            <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>🎯 Mode</h3>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.5rem',marginBottom:'1rem'}}>
-              <div 
-                className={`mode-btn ${mode==='drop-pin'?'active':''}`} 
-                onClick={() => handleModeChange('drop-pin')}
-              >📍 Pin</div>
-              <div 
-                className={`mode-btn ${mode==='draw-zone'?'active':''}`} 
-                onClick={() => handleModeChange('draw-zone')}
-              >✏️ Zone</div>
-              <div 
-                className={`mode-btn ${mode==='select'?'active':''}`} 
-                onClick={() => handleModeChange('select')}
-              >👆 Select</div>
-            </div>
-            
-            {mode === 'draw-zone' && zonePoints.length > 0 && (
-              <div style={{display:'flex',gap:'0.5rem',marginBottom:'1rem'}}>
-                <button 
-                  onClick={finishZone} 
-                  className="modern-button" 
-                  style={{
-                    flex:1,
-                    padding:'0.75rem',
-                    background:'#10b981',
-                    color:'white',
-                    border:'none',
-                    borderRadius:'0.5rem',
-                    fontWeight:'700'
-                  }}
-                >✅ Finish ({zonePoints.length})</button>
-                <button 
-                  onClick={cancelZoneDrawing} 
-                  className="modern-button" 
-                  style={{
-                    padding:'0.75rem',
-                    background:'#ef4444',
-                    color:'white',
-                    border:'none',
-                    borderRadius:'0.5rem',
-                    fontWeight:'700'
-                  }}
-                >✖</button>
-              </div>
-            )}
-            
-            {mode === 'drop-pin' && (
+        className={`${isMobile ? 'mobile-dropdown' : 'desktop-sidebar'} ${mobileMenuOpen ? 'open' : ''}`} 
+        style={{
+          flexDirection:'column',
+          background:'white',
+          borderRadius:isMobile?0:'1.5rem',
+          boxShadow:'0 8px 32px rgba(0,0,0,0.15)',
+          overflow:'hidden'
+        }}
+      >
+        <div style={{padding:'1.5rem',borderBottom:'1px solid #e5e7eb'}}>
+          <h1 style={{fontSize:'1.875rem',fontWeight:'700',color:'#1e293b'}}>🏠 RepZone V2</h1>
+          
+          {currentUser && (
+            <div style={{display:'flex',alignItems:'center',gap:'0.75rem',marginTop:'1rem',padding:'1rem',background:'#f8fafc',borderRadius:'1rem'}}>
               <div style={{
-                padding:'0.75rem',
-                background:'#d1fae5',
-                borderRadius:'0.5rem',
-                fontSize:'0.875rem',
-                fontWeight:'600',
-                color:'#065f46',
-                textAlign:'center'
-              }}>
-                ✅ Click map - gets full address!
-              </div>
-            )}
-          </div>
-
-          <div className="stat-card" style={{marginBottom:'1rem'}}>
-            <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>🎯 Lead Type</h3>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'0.75rem',marginBottom:'1rem'}}>
-              {Object.entries(LEAD_TYPES).slice(0,4).map(([key, type]) => (
-                <div 
-                  key={key} 
-                  onClick={() => setStatus(key)} 
-                  className={`lead-type-btn ${status===key?'active':''}`}
-                  style={{
-                    background:type.color,
-                    color:'white'
-                  }}
-                >
-                  <div style={{fontSize:'1.5rem',marginBottom:'0.25rem'}}>{type.icon}</div>
-                  <div style={{fontSize:'0.875rem',fontWeight:'700'}}>{type.label}</div>
-                </div>
-              ))}
-            </div>
-            
-            <button 
-              onClick={() => setFdMode(!fdMode)} 
-              className="modern-button" 
-              style={{
-                width:'100%',
-                padding:'0.875rem',
-                background:fdMode?'#10b981':'#3b82f6',
-                color:'white',
-                border:'none',
-                borderRadius:'0.75rem',
-                fontWeight:'700',
-                marginBottom:'0.75rem'
-              }}
-            >{fdMode ? '✅ FD Mode ON' : '🏘️ Enable FD Mode'}</button>
-            
-            <textarea 
-              value={note} 
-              onChange={(e) => setNote(e.target.value)} 
-              placeholder="Note (gate code, dog, etc.)" 
-              rows={2} 
-              className="textarea-field"
-            />
-          </div>
-
-          <div className="stat-card" style={{marginBottom:'1rem'}}>
-            <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>🔍 Search Address</h3>
-            <input 
-              value={addressSearch} 
-              onChange={(e) => setAddressSearch(e.target.value)} 
-              placeholder="Type address to find location..." 
-              className="search-input"
-            />
-            {searching && (
-              <div style={{marginTop:'0.5rem',fontSize:'0.875rem',color:'#64748b',fontWeight:'600'}}>
-                Searching...
-              </div>
-            )}
-            {searchResults.length > 0 && (
-              <div style={{marginTop:'0.5rem',maxHeight:'200px',overflowY:'auto'}}>
-                {searchResults.map((result, idx) => (
-                  <div 
-                    key={idx} 
-                    onClick={() => selectSearchResult(result)} 
-                    className="search-result"
-                  >{result.displayName}</div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {trackingEnabled && currentLocation && (
-            <div className={`gps-indicator ${!gpsIsFresh?'stale':''}`}>
-              <div className="gps-indicator-content">
-                <div className={`gps-dot ${!gpsIsFresh?'stale':''} tracking-indicator`}></div>
-                <div>
-                  <div className="gps-status">GPS {gpsIsFresh ? 'Active' : 'Stale'}</div>
-                  <div className="gps-details">
-                    Age: {gpsAge}s • Accuracy: ±{currentLocation.accuracy?.toFixed(0)}ft
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {zones.length > 0 && (
-            <div style={{
-              marginTop:'1rem',
-              padding:'1rem',
-              background:'#eff6ff',
-              borderRadius:'1rem',
-              border:'2px solid #3b82f6'
-            }}>
-              <div style={{
-                fontWeight:'700',
-                marginBottom:'0.5rem',
+                width:'48px',
+                height:'48px',
+                borderRadius:'50%',
+                background:currentUser.color,
                 display:'flex',
                 alignItems:'center',
-                justifyContent:'space-between',
-                color:'#1e293b'
+                justifyContent:'center',
+                color:'white',
+                fontWeight:'700',
+                fontSize:'1.25rem'
               }}>
-                <span>🗺️ Zones ({zones.length})</span>
+                {currentUser.name.charAt(0)}
               </div>
-              {zones.map(zone => (
-                <div 
-                  key={zone.id} 
-                  style={{
-                    padding:'0.5rem',
-                    background:'white',
-                    borderRadius:'0.5rem',
-                    marginBottom:'0.5rem',
-                    fontSize:'0.875rem',
-                    display:'flex',
-                    alignItems:'center',
-                    justifyContent:'space-between'
-                  }}
-                >
-                  <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
-                    <span style={{
-                      display:'inline-block',
-                      width:'10px',
-                      height:'10px',
-                      borderRadius:'50%',
-                      background:zone.color
-                    }}></span>
-                    {zone.name}
-                  </div>
-                  {isAdmin && (
+              <div style={{flex:1}}>
+                <div style={{fontWeight:'600',color:'#1e293b'}}>{currentUser.name}</div>
+                <div style={{fontSize:'0.75rem',color:'#64748b',textTransform:'uppercase'}}>{currentUser.role}</div>
+              </div>
+              <button 
+                onClick={() => {
+                  if (confirm('Switch user?')) {
+                    setCurrentUser(null);
+                    localStorage.removeItem('current_user_id');
+                  }
+                }} 
+                style={{
+                  padding:'0.5rem 1rem',
+                  background:'#e5e7eb',
+                  border:'none',
+                  borderRadius:'0.5rem',
+                  fontSize:'0.875rem',
+                  fontWeight:'600',
+                  cursor:'pointer'
+                }}
+              >Switch</button>
+            </div>
+          )}
+        </div>
+
+        <div style={{display:'flex',borderBottom:'1px solid #e5e7eb'}}>
+          <div 
+            className={`tab ${activeTab==='map'?'active':''}`} 
+            onClick={()=>setActiveTab('map')} 
+            style={{flex:1,textAlign:'center'}}
+          >🗺️ Map</div>
+          <div 
+            className={`tab ${activeTab==='stats'?'active':''}`} 
+            onClick={()=>setActiveTab('stats')} 
+            style={{flex:1,textAlign:'center'}}
+          >📊 Stats</div>
+          <div 
+            className={`tab ${activeTab==='leaderboard'?'active':''}`} 
+            onClick={()=>setActiveTab('leaderboard')} 
+            style={{flex:1,textAlign:'center'}}
+          >🏆 Leaders</div>
+        </div>
+
+        <div style={{flex:1,overflowY:'auto',padding:'1.5rem'}}>
+          {activeTab === 'map' && (
+            <>
+              <div className="stat-card" style={{marginBottom:'1rem'}}>
+                <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>🎯 Mode</h3>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.5rem',marginBottom:'1rem'}}>
+                  <div 
+                    className={`mode-btn ${mode==='drop-pin'?'active':''}`} 
+                    onClick={() => setMode('drop-pin')}
+                  >📍 Pin</div>
+                  <div 
+                    className={`mode-btn ${mode==='draw-zone'?'active':''}`} 
+                    onClick={() => setMode('draw-zone')}
+                  >✏️ Zone</div>
+                  <div 
+                    className={`mode-btn ${mode==='select'?'active':''}`} 
+                    onClick={() => setMode('select')}
+                  >👆 Select</div>
+                </div>
+                
+                {mode === 'draw-zone' && zonePoints.length > 0 && (
+                  <div style={{display:'flex',gap:'0.5rem'}}>
                     <button 
-                      onClick={() => deleteZone(zone.id)} 
+                      onClick={finishZone} 
+                      className="modern-button" 
                       style={{
-                        padding:'0.25rem 0.5rem',
+                        flex:1,
+                        padding:'0.75rem',
+                        background:'#10b981',
+                        color:'white',
+                        border:'none',
+                        borderRadius:'0.5rem',
+                        fontWeight:'700'
+                      }}
+                    >✅ Finish ({zonePoints.length})</button>
+                    <button 
+                      onClick={cancelZoneDrawing} 
+                      className="modern-button" 
+                      style={{
+                        padding:'0.75rem',
                         background:'#ef4444',
                         color:'white',
                         border:'none',
-                        borderRadius:'0.375rem',
-                        fontSize:'0.75rem',
-                        fontWeight:'600',
-                        cursor:'pointer'
+                        borderRadius:'0.5rem',
+                        fontWeight:'700'
                       }}
-                    >Delete</button>
-                  )}
+                    >✖</button>
+                  </div>
+                )}
+                
+                {mode === 'drop-pin' && (
+                  <div style={{
+                    padding:'0.75rem',
+                    background:'#d1fae5',
+                    borderRadius:'0.5rem',
+                    fontSize:'0.875rem',
+                    fontWeight:'600',
+                    color:'#065f46',
+                    textAlign:'center'
+                  }}>
+                    ✅ Click map to drop pin!
+                  </div>
+                )}
+              </div>
+
+              <div className="stat-card" style={{marginBottom:'1rem'}}>
+                <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>🎯 Lead Type</h3>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'0.75rem',marginBottom:'1rem'}}>
+                  {Object.entries(LEAD_TYPES).map(([key, type]) => (
+                    <div 
+                      key={key} 
+                      onClick={() => setStatus(key)} 
+                      className={`lead-type-btn ${status===key?'active':''}`}
+                      style={{
+                        background:type.color,
+                        color:'white'
+                      }}
+                    >
+                      <div style={{fontSize:'1.5rem',marginBottom:'0.25rem'}}>{type.icon}</div>
+                      <div style={{fontSize:'0.875rem',fontWeight:'700'}}>{type.label}</div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-        </>
-      )}
+                
+                <button 
+                  onClick={() => setFdMode(!fdMode)} 
+                  className="modern-button" 
+                  style={{
+                    width:'100%',
+                    padding:'0.875rem',
+                    background:fdMode?'#10b981':'#3b82f6',
+                    color:'white',
+                    border:'none',
+                    borderRadius:'0.75rem',
+                    fontWeight:'700',
+                    marginBottom:'0.75rem'
+                  }}
+                >{fdMode ? '✅ FD Mode ON' : '🏘️ Enable FD Mode'}</button>
+                
+                <textarea 
+                  value={note} 
+                  onChange={(e) => setNote(e.target.value)} 
+                  placeholder="Note (gate code, dog, etc.)" 
+                  rows={2} 
+                  className="textarea-field"
+                />
+              </div>
 
-      {activeTab === 'stats' && (
-        <div className="stat-card">
-          <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>📊 Your Stats</h3>
-          <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'0.75rem'}}>
-            <div style={{padding:'1rem',background:'#f8fafc',borderRadius:'0.75rem',textAlign:'center',border:'2px solid #e5e7eb'}}>
-              <div style={{fontSize:'2rem',fontWeight:'700',color:'#10b981'}}>{stats.estimates}</div>
-              <div style={{fontSize:'0.75rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>ESTIMATES</div>
-            </div>
-            <div style={{padding:'1rem',background:'#f8fafc',borderRadius:'0.75rem',textAlign:'center',border:'2px solid #e5e7eb'}}>
-              <div style={{fontSize:'2rem',fontWeight:'700',color:'#f59e0b'}}>{stats.callbacks}</div>
-              <div style={{fontSize:'0.75rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>CALLBACKS</div>
-            </div>
-            <div style={{padding:'1rem',background:'#f8fafc',borderRadius:'0.75rem',textAlign:'center',border:'2px solid #e5e7eb'}}>
-              <div style={{fontSize:'2rem',fontWeight:'700',color:'#3b82f6'}}>{stats.flyers}</div>
-              <div style={{fontSize:'0.75rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>FLYERS</div>
-            </div>
-            <div style={{padding:'1rem',background:'#f8fafc',borderRadius:'0.75rem',textAlign:'center',border:'2px solid #e5e7eb'}}>
-              <div style={{fontSize:'2rem',fontWeight:'700',color:'#1e293b'}}>{stats.totalPins}</div>
-              <div style={{fontSize:'0.75rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>TOTAL</div>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="stat-card" style={{marginBottom:'1rem'}}>
+                <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>🔍 Search Address</h3>
+                <input 
+                  value={addressSearch} 
+                  onChange={(e) => setAddressSearch(e.target.value)} 
+                  placeholder="Type address..." 
+                  className="search-input"
+                />
+                {searching && (
+                  <div style={{marginTop:'0.5rem',fontSize:'0.875rem',color:'#64748b',fontWeight:'600'}}>
+                    Searching...
+                  </div>
+                )}
+                {searchResults.length > 0 && (
+                  <div style={{marginTop:'0.5rem',maxHeight:'200px',overflowY:'auto'}}>
+                    {searchResults.map((result, idx) => (
+                      <div 
+                        key={idx} 
+                        onClick={() => selectSearchResult(result)} 
+                        className="search-result"
+                      >{result.displayName}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
-      {activeTab === 'leaderboard' && (
-        <div className="stat-card">
-          <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>🏆 Leaderboard</h3>
-          
-          <div style={{display:'flex',gap:'0.5rem',marginBottom:'1rem'}}>
-            {['day', 'week', 'all'].map(period => (
-              <button 
-                key={period} 
-                onClick={() => setLeaderboardPeriod(period)} 
-                className={`filter-btn ${leaderboardPeriod===period?'active':''}`}
-                style={{flex:1}}
-              >
-                {period==='day'?'Today':period==='week'?'Week':'All Time'}
-              </button>
-            ))}
-          </div>
-          
-          <div style={{display:'flex',gap:'0.5rem',marginBottom:'1rem'}}>
-            {['d2d', 'flyer'].map(type => (
-              <button 
-                key={type} 
-                onClick={() => setLeaderboardType(type)} 
-                className={`filter-btn ${leaderboardType===type?'active':''}`}
-                style={{flex:1}}
-              >
-                {type==='d2d'?'🚪 Door-to-Door':'📬 Flyer Drops'}
-              </button>
-            ))}
-          </div>
-          
-          <div style={{maxHeight:'400px',overflowY:'auto'}}>
-            {leaderboard.map((member, idx) => (
-              <div 
-                key={member.id} 
-                style={{
-                  display:'flex',
-                  alignItems:'center',
-                  gap:'0.75rem',
-                  padding:'0.875rem',
-                  background:'white',
-                  borderRadius:'0.75rem',
-                  marginBottom:'0.5rem',
-                  border:'2px solid #e5e7eb'
-                }}
-              >
-                <div 
-                  className={`rank-badge ${idx<3?`rank-${idx+1}`:''}`}
-                  style={idx>=3?{background:'#334155',color:'white'}:{}}
-                >{idx+1}</div>
-                <div style={{
-                  width:'32px',
-                  height:'32px',
-                  borderRadius:'50%',
-                  background:member.color,
-                  display:'flex',
-                  alignItems:'center',
-                  justifyContent:'center',
-                  color:'white',
-                  fontWeight:'700',
-                  fontSize:'0.875rem'
-                }}>{member.name.charAt(0)}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:'600',color:'#1e293b',fontSize:'0.9375rem'}}>{member.name}</div>
-                  <div style={{fontSize:'0.75rem',color:'#64748b'}}>
-                    {member.isOnline ? '🟢 Online' : '⚪ Offline'}
+              {trackingEnabled && currentLocation && (
+                <div className={`gps-indicator ${!gpsIsFresh?'stale':''}`}>
+                  <div className="gps-indicator-content">
+                    <div className={`gps-dot ${!gpsIsFresh?'stale':''} tracking-indicator`}></div>
+                    <div>
+                      <div className="gps-status">GPS {gpsIsFresh ? 'Active' : 'Stale'}</div>
+                      <div className="gps-details">Age: {gpsAge}s</div>
+                    </div>
                   </div>
                 </div>
-                <div style={{textAlign:'right'}}>
-                  <div style={{fontSize:'1.25rem',fontWeight:'700',color:'#1e293b'}}>{member.knockCount}</div>
-                  <div style={{fontSize:'0.625rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>KNOCKS</div>
+              )}
+
+              {zones.length > 0 && (
+                <div style={{
+                  marginTop:'1rem',
+                  padding:'1rem',
+                  background:'#eff6ff',
+                  borderRadius:'1rem',
+                  border:'2px solid #3b82f6'
+                }}>
+                  <div style={{
+                    fontWeight:'700',
+                    marginBottom:'0.5rem',
+                    color:'#1e293b'
+                  }}>
+                    🗺️ Zones ({zones.length})
+                  </div>
+                  {zones.map(zone => (
+                    <div 
+                      key={zone.id} 
+                      style={{
+                        padding:'0.5rem',
+                        background:'white',
+                        borderRadius:'0.5rem',
+                        marginBottom:'0.5rem',
+                        fontSize:'0.875rem',
+                        display:'flex',
+                        alignItems:'center',
+                        justifyContent:'space-between'
+                      }}
+                    >
+                      <div style={{display:'flex',alignItems:'center',gap:'0.5rem'}}>
+                        <span style={{
+                          display:'inline-block',
+                          width:'10px',
+                          height:'10px',
+                          borderRadius:'50%',
+                          background:zone.color
+                        }}></span>
+                        {zone.name}
+                      </div>
+                      {isAdmin && (
+                        <button 
+                          onClick={() => deleteZone(zone.id)} 
+                          style={{
+                            padding:'0.25rem 0.5rem',
+                            background:'#ef4444',
+                            color:'white',
+                            border:'none',
+                            borderRadius:'0.375rem',
+                            fontSize:'0.75rem',
+                            fontWeight:'600',
+                            cursor:'pointer'
+                          }}
+                        >Delete</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+
+          {activeTab === 'stats' && (
+            <div className="stat-card">
+              <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>📊 Your Stats</h3>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'0.75rem'}}>
+                <div style={{padding:'1rem',background:'#f8fafc',borderRadius:'0.75rem',textAlign:'center',border:'2px solid #e5e7eb'}}>
+                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#10b981'}}>{stats.estimates}</div>
+                  <div style={{fontSize:'0.75rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>ESTIMATES</div>
+                </div>
+                <div style={{padding:'1rem',background:'#f8fafc',borderRadius:'0.75rem',textAlign:'center',border:'2px solid #e5e7eb'}}>
+                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#f59e0b'}}>{stats.callbacks}</div>
+                  <div style={{fontSize:'0.75rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>CALLBACKS</div>
+                </div>
+                <div style={{padding:'1rem',background:'#f8fafc',borderRadius:'0.75rem',textAlign:'center',border:'2px solid #e5e7eb'}}>
+                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#3b82f6'}}>{stats.flyers}</div>
+                  <div style={{fontSize:'0.75rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>FLYERS</div>
+                </div>
+                <div style={{padding:'1rem',background:'#f8fafc',borderRadius:'0.75rem',textAlign:'center',border:'2px solid #e5e7eb'}}>
+                  <div style={{fontSize:'2rem',fontWeight:'700',color:'#1e293b'}}>{stats.totalPins}</div>
+                  <div style={{fontSize:'0.75rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>TOTAL</div>
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
-      )}
+            </div>
+          )}
 
-      {activeTab === 'crm' && (
-        <div className="stat-card">
-          <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>
-            📋 Leads ({filteredLeads.length})
-          </h3>
-          
-          <div style={{maxHeight:'500px',overflowY:'auto'}}>
-            {filteredLeads.length === 0 ? (
-              <div style={{textAlign:'center',padding:'2rem',color:'#64748b'}}>No leads yet</div>
-            ) : (
-              filteredLeads.map(pin => {
-                const leadType = LEAD_TYPES[pin.status];
-                let customerInfo = null;
-                
-                if (pin.note && pin.note.includes(' - ') && pin.note.includes('@')) {
-                  const custPart = pin.note.split(' | ')[0];
-                  const custDetails = custPart.split(' - ');
-                  if (custDetails.length >= 2) {
-                    customerInfo = { 
-                      name: custDetails[0], 
-                      email: custDetails[1], 
-                      phone: custDetails[2] || null 
-                    };
-                  }
-                }
-                
-                return (
+          {activeTab === 'leaderboard' && (
+            <div className="stat-card">
+              <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>🏆 Leaderboard</h3>
+              
+              <div style={{display:'flex',gap:'0.5rem',marginBottom:'1rem'}}>
+                {['day', 'week', 'all'].map(period => (
+                  <button 
+                    key={period} 
+                    onClick={() => setLeaderboardPeriod(period)} 
+                    className={`filter-btn ${leaderboardPeriod===period?'active':''}`}
+                    style={{flex:1}}
+                  >
+                    {period==='day'?'Today':period==='week'?'Week':'All Time'}
+                  </button>
+                ))}
+              </div>
+              
+              <div style={{display:'flex',gap:'0.5rem',marginBottom:'1rem'}}>
+                {['d2d', 'flyer'].map(type => (
+                  <button 
+                    key={type} 
+                    onClick={() => setLeaderboardType(type)} 
+                    className={`filter-btn ${leaderboardType===type?'active':''}`}
+                    style={{flex:1}}
+                  >
+                    {type==='d2d'?'🚪 Door-to-Door':'📬 Flyer Drops'}
+                  </button>
+                ))}
+              </div>
+              
+              <div style={{maxHeight:'400px',overflowY:'auto'}}>
+                {leaderboard.map((member, idx) => (
                   <div 
-                    key={pin.id} 
+                    key={member.id} 
                     style={{
-                      padding:'1rem',
+                      display:'flex',
+                      alignItems:'center',
+                      gap:'0.75rem',
+                      padding:'0.875rem',
                       background:'white',
                       borderRadius:'0.75rem',
                       marginBottom:'0.5rem',
                       border:'2px solid #e5e7eb'
                     }}
                   >
+                    <div 
+                      className={`rank-badge ${idx<3?`rank-${idx+1}`:''}`}
+                      style={idx>=3?{background:'#334155',color:'white'}:{color:'white'}}
+                    >{idx+1}</div>
                     <div style={{
+                      width:'32px',
+                      height:'32px',
+                      borderRadius:'50%',
+                      background:member.color,
                       display:'flex',
                       alignItems:'center',
-                      gap:'0.5rem',
-                      marginBottom:'0.5rem'
-                    }}>
-                      <span style={{fontSize:'1.25rem'}}>{leadType?.icon}</span>
-                      <span style={{
-                        fontWeight:'600',
-                        color:leadType?.color,
-                        fontSize:'0.9375rem'
-                      }}>{leadType?.label}</span>
-                    </div>
-                    
-                    {customerInfo && (
-                      <div style={{marginBottom:'0.5rem'}}>
-                        <div style={{fontWeight:'700',color:'#1e293b'}}>{customerInfo.name}</div>
-                        {customerInfo.email && (
-                          <div style={{fontSize:'0.875rem',color:'#3b82f6'}}>{customerInfo.email}</div>
-                        )}
-                        {customerInfo.phone && (
-                          <div style={{fontSize:'0.875rem',color:'#3b82f6'}}>{customerInfo.phone}</div>
-                        )}
+                      justifyContent:'center',
+                      color:'white',
+                      fontWeight:'700',
+                      fontSize:'0.875rem'
+                    }}>{member.name.charAt(0)}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:'600',color:'#1e293b',fontSize:'0.9375rem'}}>{member.name}</div>
+                      <div style={{fontSize:'0.75rem',color:'#64748b'}}>
+                        {member.isOnline ? '🟢 Online' : '⚪ Offline'}
                       </div>
-                    )}
-                    
-                    <div style={{fontSize:'0.875rem',color:'#64748b',marginBottom:'0.25rem'}}>
-                      {pin.address || 'No address'}
                     </div>
-                    <div style={{fontSize:'0.75rem',color:'#94a3b8'}}>
-                      {new Date(pin.created_at).toLocaleString()}
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontSize:'1.25rem',fontWeight:'700',color:'#1e293b'}}>{member.knockCount}</div>
+                      <div style={{fontSize:'0.625rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>
+                        {leaderboardType==='d2d'?'A LEADS':'FLYERS'}
+                      </div>
                     </div>
                   </div>
-                );
-              })
-            )}
-          </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
-  </div>
-</div>
-);
+  );
 }
+
 ReactDOM.createRoot(document.getElementById('root')).render(<RepZoneApp />);
 </script>
 </body>

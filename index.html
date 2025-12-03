@@ -69,8 +69,6 @@
   .recenter-btn:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
   .compass-btn { position: fixed; bottom: 110px; right: 20px; width: 56px; height: 56px; background: white; border: 2px solid #f59e0b; border-radius: 50%; box-shadow: 0 4px 12px rgba(0,0,0,0.2); cursor: pointer; z-index: 1000; display: flex; align-items: center; justify-content: center; font-size: 1.75rem; transition: all 0.3s; }
   .compass-btn:hover { transform: scale(1.1); box-shadow: 0 6px 20px rgba(0,0,0,0.3); }
-  .zone-debug-banner { position: fixed; top: 80px; left: 50%; transform: translateX(-50%); background: #fef3c7; border: 2px solid #f59e0b; padding: 0.75rem 1.5rem; border-radius: 0.75rem; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-weight: 600; color: #92400e; max-width: 90%; text-align: center; }
-  .zone-debug-banner button { margin-left: 1rem; background: #f59e0b; color: white; border: none; padding: 0.25rem 0.75rem; border-radius: 0.5rem; cursor: pointer; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -102,39 +100,10 @@ const LEAD_TYPES = {
 
 const GPS_MAX_AGE_MS = 30000;
 
-const ZONE_BACKUP_KEY = 'repzone_assigned_zones_backup';
-const ZONE_HISTORY_KEY = 'repzone_zone_history';
-
-const backupZones = (zones) => {
-  try {
-    const backupData = { zones, timestamp: new Date().toISOString(), count: zones.length };
-    localStorage.setItem(ZONE_BACKUP_KEY, JSON.stringify(backupData));
-    const history = JSON.parse(localStorage.getItem(ZONE_HISTORY_KEY) || '[]');
-    history.unshift(backupData);
-    localStorage.setItem(ZONE_HISTORY_KEY, JSON.stringify(history.slice(0, 10)));
-  } catch (e) {}
-};
-
-const restoreZonesFromBackup = () => {
-  try {
-    const backup = localStorage.getItem(ZONE_BACKUP_KEY);
-    if (backup) {
-      const data = JSON.parse(backup);
-      return data.zones;
-    }
-  } catch (e) {}
-  return null;
-};
-
-const detectZoneDeletion = (oldCount, newCount) => {
-  if (oldCount === 0) return { deleted: false };
-  const percentChange = ((oldCount - newCount) / oldCount) * 100;
-  if (newCount === 0 && oldCount > 0) {
-    return { deleted: true, severity: 'critical', message: `⚠️ ALL ${oldCount} zones disappeared!` };
-  } else if (percentChange > 50) {
-    return { deleted: true, severity: 'warning', message: `⚠️ Zones dropped: ${oldCount} → ${newCount}` };
-  }
-  return { deleted: false };
+const GHL_CONFIG = {
+  apiKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6ImVuMmQ4Q2FxR0Q4YTNTRUNNSEY4eiIsImNvbXBhbnlfaWQiOiJPY3JQM2ljTW5tcTlXSkxLRkhvTSIsInZlcnNpb24iOjEsImlhdCI6MTczNDg0NjI5NDUzOCwic3ViIjoiSGZ5Y045M1RsN3VHckFQZ2l2MjQifQ.m7c5fHpJldhJLwp14cA0XOmRNgEbnGJy5ufQxCiujRA',
+  locationId: 'en2d8CaqGD8a3SEMVFHz',
+  calendarUrls: { onsite: 'https://sea.refinedpainting.co/widget/bookings/onsiteestimates', general: 'https://sea.refinedpainting.co/widget/booking/fIYuXbwwo4XQh3nyLxj8' }
 };
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
@@ -239,12 +208,6 @@ async function getPlaceDetails(placeId) {
   });
 }
 
-const GHL_CONFIG = {
-  apiKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJsb2NhdGlvbl9pZCI6ImVuMmQ4Q2FxR0Q4YTNTRU1WRkhaIiwidmVyc2lvbiI6MSwiaWF0IjoxNzUyODYxNDIyMzU2LCJzdWIiOiJuMGFvVnBNQlJ1TjRKSGJEUWJXeiJ9.AZc26Y3MqBK8SUdc8PyufVwrUsrS7kac1mnAhFJDlHA',
-  locationId: 'en2d8CaqGD8a3SEMVFHz',
-  calendarUrls: { onsite: 'https://sea.refinedpainting.co/widget/bookings/onsiteestimates', general: 'https://sea.refinedpainting.co/widget/booking/fIYuXbwwo4XQh3nyLxj8' }
-};
-
 async function sendContactToGHL(contactData) {
   try {
     const response = await fetch('https://rest.gohighlevel.com/v1/contacts/', {
@@ -317,9 +280,6 @@ function RepZoneApp() {
   const [pendingPinLocation, setPendingPinLocation] = useState(null);
   const [fdMode, setFdMode] = useState(false);
   const [assignedZones, setAssignedZones] = useState([]);
-  const [showZoneDebug, setShowZoneDebug] = useState(false);
-  const [zoneDebugInfo, setZoneDebugInfo] = useState('');
-  const [previousZoneCount, setPreviousZoneCount] = useState(0);
   const [mapHeading, setMapHeading] = useState(0);
 
   const mapInstanceRef = useRef(null);
@@ -460,33 +420,7 @@ function RepZoneApp() {
       setPins(pinsRes.data || []);
       setZones(zonesRes.data || []);
       setTeamMembers(teamRes.data || []);
-      
-      const newZones = assignedZonesRes.data || [];
-      const deletion = detectZoneDeletion(previousZoneCount, newZones.length);
-      
-      if (deletion.deleted && deletion.severity === 'critical') {
-        const backup = restoreZonesFromBackup();
-        if (backup?.length > 0) {
-          setZoneDebugInfo(deletion.message + ` Backup: ${backup.length} zones`);
-          setShowZoneDebug(true);
-          if (confirm(`CRITICAL: Zones disappeared! Restore ${backup.length} from backup?`)) {
-            await restoreZonesToDatabase(backup);
-            return;
-          }
-          setAssignedZones(backup);
-          setPreviousZoneCount(backup.length);
-          return;
-        }
-      } else if (deletion.deleted) {
-        setZoneDebugInfo(deletion.message);
-        setShowZoneDebug(true);
-      }
-      
-      setAssignedZones(newZones);
-      if (newZones.length > 0) {
-        setPreviousZoneCount(newZones.length);
-        backupZones(newZones);
-      }
+      setAssignedZones(assignedZonesRes.data || []);
     } catch (e) {}
     setLoading(false);
   }
@@ -553,53 +487,6 @@ function RepZoneApp() {
       showToast(`✅ Role updated to ${newRole}!`);
     } catch (e) {
       showToast('❌ Error updating role: ' + e.message);
-    }
-  }
-
-  async function assignZone(zoneId, userId) {
-    const adminIds = ['user-1760858671762', 'user-1760855853315'];
-    if (!currentUser || !adminIds.includes(currentUser.id)) {
-      showToast('⚠️ Only RDHQ and JOSE can assign zones!');
-      return;
-    }
-    const member = teamMembers.find(m => m.id === userId);
-    try {
-      await setSupabaseUser(currentUser.id);
-      await supabase.current.from('zones').update({ assigned_to: userId, color: member?.color || COLORS[0] }).eq('id', zoneId);
-      setZones(prev => prev.map(z => z.id === zoneId ? {...z, assigned_to: userId, color: member?.color} : z));
-      setSelectedZone(null);
-      showToast(`✅ Zone assigned to ${member.name}!`);
-    } catch (e) {
-      showToast('❌ Error assigning zone: ' + e.message);
-    }
-  }
-
-  async function unassignZone(zoneId) {
-    if (!currentUser || currentUser.role !== 'admin') {
-      showToast('⚠️ Only admins can unassign zones!');
-      return;
-    }
-    try {
-      await setSupabaseUser(currentUser.id);
-      await supabase.current.from('zones').update({ assigned_to: null }).eq('id', zoneId);
-      setZones(prev => prev.map(z => z.id === zoneId ? {...z, assigned_to: null} : z));
-      setSelectedZone(null);
-      showToast('✅ Zone unassigned!');
-    } catch (e) {
-      showToast('❌ Error unassigning zone: ' + e.message);
-    }
-  }
-
-  async function restoreZonesToDatabase(zones) {
-    try {
-      showToast('Restoring zones...');
-      const { error } = await supabase.current.from('assigned_zones').insert(zones.map(z => ({ team_member_id: z.team_member_id, bounds: z.bounds, name: z.name, color: z.color })));
-      if (error) throw error;
-      showToast('✅ Zones restored!');
-      setShowZoneDebug(false);
-      loadData();
-    } catch (e) {
-      showToast('❌ Restore failed');
     }
   }
 
@@ -1045,28 +932,21 @@ function RepZoneApp() {
     estimates: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.status === 'estimate').length : 0,
     callbacks: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.status === 'callback').length : 0,
     notinterested: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.status === 'notinterested').length : 0,
-    knocked: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.status === 'knocked').length : 0,
-    verified: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.verification_status === 'verified').length : 0,
-    suspicious: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.verification_status === 'suspicious').length : 0,
-    onlineUsers: liveLocations.filter(l => new Date(l.last_updated) > new Date(Date.now() - 5 * 60 * 1000)).length,
-    withAddress: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.address).length : 0,
-    withoutAddress: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && !p.address).length : 0
+    flyers: currentUser ? pins.filter(p => p.team_member_id === currentUser.id && p.status === 'flyer').length : 0
   };
 
   const leaderboard = getLeaderboard();
   const gpsAge = currentLocation ? getGPSAge(currentLocation) : null;
   const gpsIsFresh = currentLocation ? isGPSFresh(currentLocation) : false;
+  
+  const filteredPins = pins.filter(p => {
+    if (p.status === 'flyer' || p.status === 'skipped' || p.status === 'knocked') return false;
+    return true;
+  });
 
   return (
     <div>
       {toastMessage && <div className="toast">{toastMessage}</div>}
-
-      {showZoneDebug && (
-        <div className="zone-debug-banner">
-          {zoneDebugInfo}
-          <button onClick={() => setShowZoneDebug(false)}>Dismiss</button>
-        </div>
-      )}
 
       {mapReady && (
         <>
@@ -1098,13 +978,6 @@ function RepZoneApp() {
         </div>
       )}
 
-      {trackingEnabled && !isMobile && (
-        <div style={{position:'fixed',top:'1rem',right:'1rem',background:gpsIsFresh?'#10b981':'#f59e0b',color:'white',padding:'0.875rem 1.5rem',borderRadius:'2rem',boxShadow:'0 6px 16px rgba(0,0,0,0.2)',zIndex:10001,display:'flex',gap:'0.875rem',alignItems:'center',fontSize:'0.9375rem',fontWeight:'700'}}>
-          <div style={{width:'14px',height:'14px',background:'white',borderRadius:'50%',animation:'pulse 2s infinite'}}></div>
-          <span>GPS {gpsAge !== null ? `${gpsAge}s` : 'Active'} {gpsIsFresh ? '✅' : '⚠️'}</span>
-        </div>
-      )}
-
       {!currentUser && (
         <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:10000,padding:'1rem'}}>
           <div style={{background:'white',borderRadius:'1.5rem',padding:'2rem',maxWidth:'440px',width:'100%',maxHeight:'80vh',overflowY:'auto',boxShadow:'0 20px 40px rgba(0,0,0,0.3)'}}>
@@ -1116,15 +989,6 @@ function RepZoneApp() {
                   <div onClick={() => selectCurrentUser(member)} className="modern-button" style={{flex:1,display:'flex',alignItems:'center',gap:'1rem',cursor:'pointer'}}>
                     <div style={{width:'56px',height:'56px',borderRadius:'50%',background:member.color,display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:'bold',fontSize:'1.5rem',flexShrink:0,boxShadow:'0 4px 12px rgba(0,0,0,0.15)'}}>{member.name.charAt(0)}</div>
                     <div><div style={{fontWeight:'700',fontSize:'1.125rem',color:'#1e293b'}}>{member.name}</div><div style={{fontSize:'0.8125rem',color:'#64748b',fontWeight:'600'}}>{member.role}</div></div>
-                  </div>
-                  <div style={{position:'relative'}}>
-                    <button onClick={() => setEditingUser(editingUser?.id === member.id ? null : member)} className="modern-button" style={{padding:'0.625rem',background:'#f1f5f9',border:'none',borderRadius:'0.75rem',fontSize:'1.5rem'}}>⋮</button>
-                    {editingUser?.id === member.id && (
-                      <div style={{position:'absolute',right:0,top:'100%',marginTop:'0.75rem',background:'white',border:'2px solid #e5e7eb',borderRadius:'1rem',padding:'0.75rem',minWidth:'180px',boxShadow:'0 10px 25px rgba(0,0,0,0.15)',zIndex:10,animation:'fadeIn 0.2s ease'}}>
-                        <button onClick={() => updateUserRole(member.id, member.role === 'admin' ? 'rep' : 'admin')} className="modern-button" style={{width:'100%',padding:'0.875rem',background:member.role==='admin'?'#f59e0b':'#3b82f6',color:'white',border:'none',borderRadius:'0.75rem',fontWeight:'700',marginBottom:'0.625rem',fontSize:'0.9375rem',boxShadow:`0 2px 8px ${member.role==='admin'?'rgba(245,158,11,0.3)':'rgba(59,130,246,0.3)'}`}}>{member.role === 'admin' ? '👤 Make Rep' : '⭐ Make Admin'}</button>
-                        <button onClick={() => deleteUser(member.id)} className="modern-button" style={{width:'100%',padding:'0.875rem',background:'#ef4444',color:'white',border:'none',borderRadius:'0.75rem',fontWeight:'700',fontSize:'0.9375rem',boxShadow:'0 2px 8px rgba(239,68,68,0.3)'}}>🗑️ Delete</button>
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
@@ -1151,6 +1015,191 @@ function RepZoneApp() {
           </div>
         </div>
       )}
+
+      <button className="hamburger-btn" id="hamburgerBtn" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+
+      <div className={`mobile-dropdown ${mobileMenuOpen ? 'open' : ''}`} style={{padding:'1.5rem'}}>
+        <SidebarContent {...{activeTab, setActiveTab, currentUser, stats, status, setStatus, fdMode, setFdMode, note, setNote, addressSearch, setAddressSearch, searchResults, selectSearchResult, searching, leaderboard, leaderboardPeriod, setLeaderboardPeriod, leaderboardType, setLeaderboardType, filteredPins, LEAD_TYPES, trackingEnabled, gpsAge, gpsIsFresh, currentLocation}} />
+      </div>
+
+      <div className="desktop-sidebar" style={{flexDirection:'column',background:'white',borderRadius:'1.5rem',boxShadow:'0 8px 32px rgba(0,0,0,0.15)',overflow:'hidden'}}>
+        <SidebarContent {...{activeTab, setActiveTab, currentUser, stats, status, setStatus, fdMode, setFdMode, note, setNote, addressSearch, setAddressSearch, searchResults, selectSearchResult, searching, leaderboard, leaderboardPeriod, setLeaderboardPeriod, leaderboardType, setLeaderboardType, filteredPins, LEAD_TYPES, trackingEnabled, gpsAge, gpsIsFresh, currentLocation}} />
+      </div>
+    </div>
+  );
+}
+
+function SidebarContent({activeTab, setActiveTab, currentUser, stats, status, setStatus, fdMode, setFdMode, note, setNote, addressSearch, setAddressSearch, searchResults, selectSearchResult, searching, leaderboard, leaderboardPeriod, setLeaderboardPeriod, leaderboardType, setLeaderboardType, filteredPins, LEAD_TYPES, trackingEnabled, gpsAge, gpsIsFresh, currentLocation}) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',height:'100%',overflow:'hidden'}}>
+      <div style={{padding:'1.5rem',borderBottom:'1px solid #e5e7eb'}}>
+        <h1 style={{fontSize:'1.875rem',fontWeight:'700',color:'#1e293b',marginBottom:'0.25rem'}}>🏠 RepZone V2</h1>
+        <p style={{fontSize:'0.875rem',color:'#64748b'}}>Door Knocking Tracker</p>
+      </div>
+
+      {currentUser && (
+        <div style={{padding:'1rem 1.5rem',borderBottom:'1px solid #e5e7eb'}}>
+          <div style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'1rem',background:'#f8fafc',borderRadius:'1rem'}}>
+            <div style={{width:'48px',height:'48px',borderRadius:'50%',background:currentUser.color,display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:'700',fontSize:'1.25rem'}}>{currentUser.name.charAt(0)}</div>
+            <div style={{flex:1}}>
+              <div style={{fontWeight:'600',color:'#1e293b'}}>{currentUser.name}</div>
+              <div style={{fontSize:'0.75rem',color:'#64748b',textTransform:'uppercase'}}>{currentUser.role}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{display:'flex',borderBottom:'1px solid #e5e7eb'}}>
+        <div className={`tab ${activeTab==='map'?'active':''}`} onClick={()=>setActiveTab('map')} style={{flex:1,textAlign:'center'}}>🗺️ Map</div>
+        <div className={`tab ${activeTab==='stats'?'active':''}`} onClick={()=>setActiveTab('stats')} style={{flex:1,textAlign:'center'}}>📊 Stats</div>
+        <div className={`tab ${activeTab==='leaderboard'?'active':''}`} onClick={()=>setActiveTab('leaderboard')} style={{flex:1,textAlign:'center'}}>🏆 Leaders</div>
+        <div className={`tab ${activeTab==='crm'?'active':''}`} onClick={()=>setActiveTab('crm')} style={{flex:1,textAlign:'center'}}>📋 CRM</div>
+      </div>
+
+      <div style={{flex:1,overflowY:'auto',padding:'1.5rem'}}>
+        {activeTab === 'map' && (
+          <>
+            <div className="stat-card" style={{marginBottom:'1rem'}}>
+              <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>🎯 Lead Type</h3>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'0.75rem',marginBottom:'1rem'}}>
+                {Object.entries(LEAD_TYPES).slice(0,4).map(([key, type]) => (
+                  <div key={key} onClick={() => setStatus(key)} className={`modern-button ${status===key?'active':''}`} style={{padding:'1rem',borderRadius:'0.75rem',background:type.color,color:'white',textAlign:'center',border:status===key?'3px solid white':'3px solid transparent',boxShadow:status===key?`0 0 0 3px ${type.color}40`:'none'}}>
+                    <div style={{fontSize:'1.5rem',marginBottom:'0.25rem'}}>{type.icon}</div>
+                    <div style={{fontSize:'0.875rem',fontWeight:'700'}}>{type.label}</div>
+                  </div>
+                ))}
+              </div>
+              <button onClick={() => setFdMode(!fdMode)} className="modern-button" style={{width:'100%',padding:'0.875rem',background:fdMode?'#10b981':'#3b82f6',color:'white',border:'none',borderRadius:'0.75rem',fontWeight:'700',marginBottom:'0.75rem'}}>{fdMode ? '✅ FD Mode ON' : '🏘️ Enable FD Mode'}</button>
+              <textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (gate code, dog, etc.)" rows={2} style={{width:'100%',padding:'0.875rem',border:'2px solid #e5e7eb',borderRadius:'0.75rem',fontSize:'0.9375rem',resize:'vertical',fontFamily:'-apple-system,sans-serif'}} />
+            </div>
+
+            <div className="stat-card">
+              <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>🔍 Search Address</h3>
+              <input value={addressSearch} onChange={(e) => setAddressSearch(e.target.value)} placeholder="Type address to find location..." style={{width:'100%',padding:'0.875rem',border:'2px solid #e5e7eb',borderRadius:'0.75rem',fontSize:'0.9375rem'}} />
+              {searching && <div style={{marginTop:'0.5rem',fontSize:'0.875rem',color:'#64748b'}}>Searching...</div>}
+              {searchResults.length > 0 && (
+                <div style={{marginTop:'0.5rem',maxHeight:'200px',overflowY:'auto'}}>
+                  {searchResults.map((result, idx) => (
+                    <div key={idx} onClick={() => selectSearchResult(result)} className="modern-button" style={{padding:'0.75rem',background:'#f8fafc',border:'1px solid #e5e7eb',borderRadius:'0.5rem',marginBottom:'0.5rem',cursor:'pointer',fontSize:'0.875rem',textAlign:'left'}}>{result.displayName}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {trackingEnabled && currentLocation && (
+              <div style={{marginTop:'1rem',padding:'1rem',background:gpsIsFresh?'#d1fae5':'#fef3c7',borderRadius:'1rem',border:`2px solid ${gpsIsFresh?'#10b981':'#f59e0b'}`}}>
+                <div style={{display:'flex',alignItems:'center',gap:'0.75rem'}}>
+                  <div className="tracking-indicator" style={{width:'12px',height:'12px',background:gpsIsFresh?'#10b981':'#f59e0b',borderRadius:'50%'}}></div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:'700',fontSize:'0.9375rem',color:'#1e293b'}}>GPS {gpsIsFresh ? 'Active' : 'Stale'}</div>
+                    <div style={{fontSize:'0.8125rem',color:'#64748b'}}>Age: {gpsAge}s • Accuracy: ±{currentLocation.accuracy?.toFixed(0)}ft</div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {activeTab === 'stats' && (
+          <div className="stat-card">
+            <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>📊 Your Stats</h3>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:'0.75rem'}}>
+              <div style={{padding:'1rem',background:'white',borderRadius:'0.75rem',textAlign:'center',border:'2px solid #e5e7eb'}}>
+                <div style={{fontSize:'2rem',fontWeight:'700',color:'#10b981',marginBottom:'0.25rem'}}>{stats.estimates}</div>
+                <div style={{fontSize:'0.75rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>Estimates</div>
+              </div>
+              <div style={{padding:'1rem',background:'white',borderRadius:'0.75rem',textAlign:'center',border:'2px solid #e5e7eb'}}>
+                <div style={{fontSize:'2rem',fontWeight:'700',color:'#f59e0b',marginBottom:'0.25rem'}}>{stats.callbacks}</div>
+                <div style={{fontSize:'0.75rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>Callbacks</div>
+              </div>
+              <div style={{padding:'1rem',background:'white',borderRadius:'0.75rem',textAlign:'center',border:'2px solid #e5e7eb'}}>
+                <div style={{fontSize:'2rem',fontWeight:'700',color:'#3b82f6',marginBottom:'0.25rem'}}>{stats.flyers}</div>
+                <div style={{fontSize:'0.75rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>Flyers</div>
+              </div>
+              <div style={{padding:'1rem',background:'white',borderRadius:'0.75rem',textAlign:'center',border:'2px solid #e5e7eb'}}>
+                <div style={{fontSize:'2rem',fontWeight:'700',color:'#1e293b',marginBottom:'0.25rem'}}>{stats.totalPins}</div>
+                <div style={{fontSize:'0.75rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>Total</div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'leaderboard' && (
+          <div className="stat-card">
+            <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>🏆 Leaderboard</h3>
+            <div style={{display:'flex',gap:'0.5rem',marginBottom:'1rem'}}>
+              {['day', 'week', 'all'].map(period => (
+                <button key={period} onClick={() => setLeaderboardPeriod(period)} className="modern-button" style={{flex:1,padding:'0.5rem',background:leaderboardPeriod===period?'#3b82f6':'#f1f5f9',color:leaderboardPeriod===period?'white':'#64748b',border:'none',borderRadius:'0.5rem',fontWeight:'600',fontSize:'0.75rem'}}>{period==='day'?'Today':period==='week'?'Week':'All Time'}</button>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:'0.5rem',marginBottom:'1rem'}}>
+              {['d2d', 'flyer'].map(type => (
+                <button key={type} onClick={() => setLeaderboardType(type)} className="modern-button" style={{flex:1,padding:'0.5rem',background:leaderboardType===type?'#10b981':'#f1f5f9',color:leaderboardType===type?'white':'#64748b',border:'none',borderRadius:'0.5rem',fontWeight:'600',fontSize:'0.75rem'}}>{type==='d2d'?'🚪 Door-to-Door':'📬 Flyer Drops'}</button>
+              ))}
+            </div>
+            <div style={{maxHeight:'400px',overflowY:'auto'}}>
+              {leaderboard.map((member, idx) => (
+                <div key={member.id} style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.875rem',background:'white',borderRadius:'0.75rem',marginBottom:'0.5rem',border:'2px solid #e5e7eb'}}>
+                  <div style={{width:'36px',height:'36px',borderRadius:'50%',background:idx===0?'linear-gradient(135deg,#fbbf24,#f59e0b)':idx===1?'linear-gradient(135deg,#94a3b8,#64748b)':idx===2?'linear-gradient(135deg,#fb923c,#f97316)':'#334155',display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:'700',fontSize:'0.875rem'}}>{idx+1}</div>
+                  <div style={{width:'32px',height:'32px',borderRadius:'50%',background:member.color,display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:'700'}}>{member.name.charAt(0)}</div>
+                  <div style={{flex:1}}>
+                    <div style={{fontWeight:'600',color:'#1e293b',fontSize:'0.9375rem'}}>{member.name}</div>
+                    <div style={{fontSize:'0.75rem',color:'#64748b'}}>{member.isOnline ? '🟢 Online' : '⚪ Offline'}</div>
+                  </div>
+                  <div style={{textAlign:'right'}}>
+                    <div style={{fontSize:'1.25rem',fontWeight:'700',color:'#1e293b'}}>{member.knockCount}</div>
+                    <div style={{fontSize:'0.625rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>KNOCKS</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'crm' && (
+          <div className="stat-card">
+            <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>📋 Leads ({filteredPins.length})</h3>
+            <div style={{maxHeight:'500px',overflowY:'auto'}}>
+              {filteredPins.length === 0 ? (
+                <div style={{textAlign:'center',padding:'2rem',color:'#64748b'}}>No leads yet</div>
+              ) : (
+                filteredPins.map(pin => {
+                  const leadType = LEAD_TYPES[pin.status];
+                  let customerInfo = null;
+                  if (pin.note && pin.note.includes(' - ') && pin.note.includes('@')) {
+                    const custPart = pin.note.split(' | ')[0];
+                    const custDetails = custPart.split(' - ');
+                    if (custDetails.length >= 2) {
+                      customerInfo = { name: custDetails[0], email: custDetails[1], phone: custDetails[2] || null };
+                    }
+                  }
+                  return (
+                    <div key={pin.id} style={{padding:'1rem',background:'white',borderRadius:'0.75rem',marginBottom:'0.5rem',border:'2px solid #e5e7eb'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:'0.5rem',marginBottom:'0.5rem'}}>
+                        <span style={{fontSize:'1.25rem'}}>{leadType?.icon}</span>
+                        <span style={{fontWeight:'600',color:leadType?.color,fontSize:'0.9375rem'}}>{leadType?.label}</span>
+                      </div>
+                      {customerInfo && (
+                        <div style={{marginBottom:'0.5rem'}}>
+                          <div style={{fontWeight:'700',color:'#1e293b'}}>{customerInfo.name}</div>
+                          {customerInfo.email && <div style={{fontSize:'0.875rem',color:'#3b82f6'}}>{customerInfo.email}</div>}
+                          {customerInfo.phone && <div style={{fontSize:'0.875rem',color:'#3b82f6'}}>{customerInfo.phone}</div>}
+                        </div>
+                      )}
+                      <div style={{fontSize:'0.875rem',color:'#64748b',marginBottom:'0.25rem'}}>{pin.address || 'No address'}</div>
+                      <div style={{fontSize:'0.75rem',color:'#94a3b8'}}>{new Date(pin.created_at).toLocaleString()}</div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

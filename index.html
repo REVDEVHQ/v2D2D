@@ -16,6 +16,7 @@
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
   @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
   
   .tracking-indicator { animation: pulse 2s infinite; }
   .toast { position: fixed; top: 5rem; right: 1rem; background: white; padding: 1rem 1.5rem; border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.15); z-index: 10001; animation: slideIn 0.3s ease; max-width: 400px; border-left: 4px solid #3b82f6; }
@@ -93,62 +94,28 @@
     box-shadow: 0 6px 20px rgba(0,0,0,0.3);
   }
   
-  .hamburger-btn {
+  .control-panel {
     position: fixed;
-    top: 1rem;
-    left: 1rem;
-    width: 54px;
-    height: 54px;
+    bottom: 10px;
+    left: 10px;
+    right: 10px;
     background: white;
-    border: none;
     border-radius: 1rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    cursor: pointer;
-    z-index: 1002;
-    flex-direction: column;
-    align-items: center;
+    padding: 1rem;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 1000;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
     justify-content: center;
-    gap: 5px;
-    transition: all 0.3s;
-    display: none;
+    max-width: 600px;
+    margin: 0 auto;
   }
   
   @media (max-width: 768px) {
-    .hamburger-btn { display: flex; }
-    .desktop-sidebar { display: none !important; }
-    .recenter-btn { bottom: 100px; }
-    .compass-btn { bottom: 30px; }
-  }
-  
-  .hamburger-btn span {
-    width: 26px;
-    height: 3px;
-    background: #1e293b;
-    border-radius: 2px;
-    transition: all 0.3s;
-  }
-  
-  .mobile-dropdown {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    background: white;
-    max-height: 0;
-    overflow: hidden;
-    transition: max-height 0.4s ease;
-    z-index: 1001;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  }
-  
-  .mobile-dropdown.open {
-    max-height: 85vh;
-    overflow-y: auto;
-  }
-  
-  @media (max-width: 768px) {
-    .mobile-dropdown { display: block; }
+    .toast { left: 1rem; right: 1rem; top: 1rem; }
+    .recenter-btn { bottom: 180px; }
+    .compass-btn { bottom: 110px; }
   }
 </style>
 </head>
@@ -167,17 +134,14 @@ const { useState, useEffect, useRef } = React;
 
 const SUPABASE_URL = 'https://cfkkxkvfekjdnwwngtzd.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNma2t4a3ZmZWtqZG53d25ndHpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3MjQ3NTYsImV4cCI6MjA4MDMwMDc1Nn0.VlAsOfeSLXzajiH7CUyXWlV9hyL68D_F3yYg1R-jcIk';
-const GOOGLE_MAPS_API_KEY = 'AIzaSyBxqGzPnCxZNpH3Xopsk4VnwZOxVLjSQWc';
 
 const COLORS = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899"];
 
 const LEAD_TYPES = {
   estimate: { icon: '💰', label: 'A - Estimate', color: '#10b981', display: 'A' },
-  callback: { icon: '📞', label: 'B - Callback 1-2 Weeks', color: '#f59e0b', display: 'B' },
-  notinterested: { icon: '📋', label: 'C - Not Interested (Has Info)', color: '#64748b', display: 'C' },
-  flyer: { icon: '📬', label: 'FD - Flyer Drop', color: '#3b82f6', display: 'FD' },
-  knocked: { icon: '✅', label: 'Knocked', color: '#16a34a', display: '✅' },
-  skipped: { icon: '⏭️', label: 'Skipped', color: '#ef4444', display: '⏭️' }
+  callback: { icon: '📞', label: 'B - Callback', color: '#f59e0b', display: 'B' },
+  notinterested: { icon: '📋', label: 'C - Not Int', color: '#64748b', display: 'C' },
+  flyer: { icon: '📬', label: 'FD - Flyer', color: '#3b82f6', display: 'FD' }
 };
 
 const GPS_MAX_AGE_MS = 30000;
@@ -201,8 +165,7 @@ function getVerificationStatus(distance) {
 
 function isGPSFresh(location) {
   if (!location || !location.timestamp) return false;
-  const age = Date.now() - location.timestamp;
-  return age < GPS_MAX_AGE_MS;
+  return (Date.now() - location.timestamp) < GPS_MAX_AGE_MS;
 }
 
 function getGPSAge(location) {
@@ -210,7 +173,6 @@ function getGPSAge(location) {
   return Math.floor((Date.now() - location.timestamp) / 1000);
 }
 
-// Google Maps Geocoding
 async function reverseGeocode(lat, lng) {
   try {
     const geocoder = new google.maps.Geocoder();
@@ -220,11 +182,7 @@ async function reverseGeocode(lat, lng) {
       const result = response.results[0];
       const addressComponents = result.address_components;
       
-      let houseNumber = '';
-      let street = '';
-      let city = '';
-      let state = '';
-      let postcode = '';
+      let houseNumber = '', street = '', city = '', state = '', postcode = '';
       
       addressComponents.forEach(component => {
         if (component.types.includes('street_number')) houseNumber = component.long_name;
@@ -258,11 +216,9 @@ async function reverseGeocode(lat, lng) {
 
 function RepZoneApp() {
   const [pins, setPins] = useState([]);
-  const [zones, setZones] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [currentLocation, setCurrentLocation] = useState(null);
-  const [mode, setMode] = useState("drop-pin");
   const [status, setStatus] = useState("estimate");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(true);
@@ -270,9 +226,6 @@ function RepZoneApp() {
   const [toastMessage, setToastMessage] = useState(null);
   const [trackingEnabled, setTrackingEnabled] = useState(false);
   const [mapHeading, setMapHeading] = useState(0);
-  const [mapTilt, setMapTilt] = useState(0);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState("controls");
   
   const mapRef = useRef(null);
   const mapInstanceRef = useRef(null);
@@ -304,13 +257,11 @@ function RepZoneApp() {
 
   async function loadData() {
     try {
-      const [pinsRes, zonesRes, teamRes] = await Promise.all([
+      const [pinsRes, teamRes] = await Promise.all([
         supabase.current.from('pins').select('*'),
-        supabase.current.from('zones').select('*'),
         supabase.current.from('team_members').select('*')
       ]);
       setPins(pinsRes.data || []);
-      setZones(zonesRes.data || []);
       setTeamMembers(teamRes.data || []);
     } catch (e) {
       console.error('Load error:', e);
@@ -340,11 +291,12 @@ function RepZoneApp() {
         };
         setCurrentLocation(newLocation);
         
-        // Update user marker with heading
         if (userMarkerRef.current && mapInstanceRef.current) {
           userMarkerRef.current.setPosition(newLocation);
-          if (newLocation.heading !== null) {
-            setMapHeading(newLocation.heading);
+          if (newLocation.heading !== null && newLocation.heading !== undefined) {
+            const icon = userMarkerRef.current.getIcon();
+            icon.rotation = newLocation.heading;
+            userMarkerRef.current.setIcon(icon);
           }
         }
       },
@@ -364,7 +316,7 @@ function RepZoneApp() {
   function recenterMap() {
     if (mapInstanceRef.current && currentLocation) {
       mapInstanceRef.current.panTo(currentLocation);
-      mapInstanceRef.current.setZoom(20);
+      mapInstanceRef.current.setZoom(21);
       showToast('📍 Recentered on your location!');
     }
   }
@@ -384,12 +336,9 @@ function RepZoneApp() {
     try {
       const addressData = await reverseGeocode(lat, lng);
       
-      let finalLat = lat;
-      let finalLng = lng;
-      let address = null;
-      let shortAddress = null;
+      let finalLat = lat, finalLng = lng, address = null, shortAddress = null;
       
-      if (addressData && addressData.fullAddress !== 'Address Not Found') {
+      if (addressData) {
         finalLat = addressData.lat;
         finalLng = addressData.lng;
         address = addressData.fullAddress;
@@ -425,8 +374,6 @@ function RepZoneApp() {
         setNote("");
         const leadTypeLabel = LEAD_TYPES[status]?.label || status;
         showToast(`✅ ${leadTypeLabel} at ${shortAddress || 'location'}! (${Math.round(distance)}ft)`, 5000);
-        
-        // Add marker to map
         addPinMarker(newPin);
       }
     } catch (error) {
@@ -440,7 +387,7 @@ function RepZoneApp() {
     if (!mapInstanceRef.current) return;
     
     const user = teamMembers.find(u => u.id === pin.team_member_id);
-    const leadType = LEAD_TYPES[pin.status] || LEAD_TYPES.knocked;
+    const leadType = LEAD_TYPES[pin.status] || LEAD_TYPES.estimate;
     const verification = pin.verification_status ? getVerificationStatus(pin.distance_from_pin || 0) : null;
     
     const marker = new google.maps.Marker({
@@ -448,35 +395,39 @@ function RepZoneApp() {
       map: mapInstanceRef.current,
       icon: {
         path: google.maps.SymbolPath.CIRCLE,
-        scale: 22,
+        scale: 16,
         fillColor: user?.color || '#64748b',
         fillOpacity: 1,
         strokeColor: verification ? verification.color : 'white',
-        strokeWeight: 4
+        strokeWeight: 3
       },
       label: {
         text: leadType.display,
         color: 'white',
-        fontSize: '14px',
+        fontSize: '12px',
         fontWeight: 'bold'
       }
     });
     
     const infoWindow = new google.maps.InfoWindow({
       content: `
-        <div style="padding:12px;min-width:200px">
-          <h3 style="font-weight:bold;margin-bottom:8px">${leadType.label}</h3>
-          ${pin.address ? `<p style="margin-bottom:8px">📍 ${pin.address}</p>` : ''}
-          <p style="color:#64748b">👤 ${pin.rep_name}</p>
-          ${verification ? `<p style="color:${verification.color};font-weight:bold">${verification.icon} ${verification.label} (${pin.distance_from_pin}ft)</p>` : ''}
+        <div style="padding:12px;min-width:200px;font-family:-apple-system,sans-serif">
+          <h3 style="font-weight:bold;margin-bottom:8px;font-size:16px">${leadType.label}</h3>
+          ${pin.address ? `<p style="margin-bottom:8px;font-size:14px">📍 ${pin.address}</p>` : ''}
+          <p style="color:#64748b;font-size:14px">👤 ${pin.rep_name}</p>
+          ${verification ? `<p style="color:${verification.color};font-weight:bold;font-size:14px;margin-top:8px">${verification.icon} ${verification.label} (${pin.distance_from_pin}ft)</p>` : ''}
         </div>
       `
     });
     
     marker.addListener('click', () => {
+      markersRef.current.forEach(m => {
+        if (m.infoWindow) m.infoWindow.close();
+      });
       infoWindow.open(mapInstanceRef.current, marker);
     });
     
+    marker.infoWindow = infoWindow;
     markersRef.current.push(marker);
   }
 
@@ -496,14 +447,13 @@ function RepZoneApp() {
       },
       gestureHandling: 'greedy',
       minZoom: 10,
-      maxZoom: 22 // Allow much deeper zoom
+      maxZoom: 22
     });
     
     mapInstanceRef.current = map;
     
-    // Add click listener for dropping pins
     map.addListener('click', async (e) => {
-      if (mode === "drop-pin" && currentUser && currentLocation) {
+      if (currentUser && currentLocation) {
         if (!isGPSFresh(currentLocation)) {
           showToast('⚠️ GPS data is stale! Move around to refresh.', 6000);
           return;
@@ -512,26 +462,22 @@ function RepZoneApp() {
       }
     });
     
-    // Add existing pins to map
     pins.forEach(pin => addPinMarker(pin));
     
-    // Center on user location if available
     if (currentLocation) {
       map.setCenter(currentLocation);
-      map.setZoom(20);
+      map.setZoom(21);
     }
   }, [loading]);
 
   useEffect(() => {
     if (!mapInstanceRef.current || !currentLocation) return;
     
-    // Remove old user marker
     if (userMarkerRef.current) {
       userMarkerRef.current.setMap(null);
     }
     
-    // Create directional arrow marker
-    const arrowPath = 'M 0,-24 L 12,24 L 0,18 L -12,24 Z'; // Arrow pointing up
+    const arrowPath = 'M 0,-24 L 12,24 L 0,18 L -12,24 Z';
     
     userMarkerRef.current = new google.maps.Marker({
       position: currentLocation,
@@ -542,14 +488,13 @@ function RepZoneApp() {
         fillOpacity: 1,
         strokeColor: 'white',
         strokeWeight: 3,
-        scale: 1.2,
-        rotation: currentLocation.heading || 0, // Show device heading
+        scale: 1.5,
+        rotation: currentLocation.heading || 0,
         anchor: new google.maps.Point(0, 0)
       },
       zIndex: 1000
     });
     
-    // Add accuracy circle
     new google.maps.Circle({
       map: mapInstanceRef.current,
       center: currentLocation,
@@ -582,6 +527,13 @@ function RepZoneApp() {
     <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'#f8fafc'}}>
       {toastMessage && <div className="toast">{toastMessage}</div>}
       
+      {saving && (
+        <div style={{position:'fixed',top:'50%',left:'50%',transform:'translate(-50%,-50%)',background:'white',padding:'2rem 2.5rem',borderRadius:'1.5rem',boxShadow:'0 20px 40px rgba(0,0,0,0.2)',zIndex:10001,display:'flex',flexDirection:'column',gap:'1rem',alignItems:'center'}}>
+          <div className="spinner" style={{width:'40px',height:'40px',borderWidth:'4px'}}></div>
+          <span style={{fontWeight:'700',fontSize:'1.125rem',color:'#1e293b'}}>💾 Saving Pin...</span>
+        </div>
+      )}
+      
       {!currentUser && (
         <div style={{position:'fixed',top:0,left:0,right:0,bottom:0,background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:10000,padding:'1rem'}}>
           <div style={{background:'white',borderRadius:'1.5rem',padding:'2rem',maxWidth:'440px',width:'100%',maxHeight:'80vh',overflowY:'auto',boxShadow:'0 20px 40px rgba(0,0,0,0.3)'}}>
@@ -607,17 +559,9 @@ function RepZoneApp() {
         </div>
       )}
 
-      {/* Recenter Button */}
-      <button onClick={recenterMap} className="recenter-btn modern-button">
-        🎯
-      </button>
+      <button onClick={recenterMap} className="recenter-btn modern-button">🎯</button>
+      <button onClick={toggleMapRotation} className="compass-btn modern-button">🧭</button>
 
-      {/* Compass/Rotate Button */}
-      <button onClick={toggleMapRotation} className="compass-btn modern-button">
-        🧭
-      </button>
-
-      {/* GPS Tracking Indicator */}
       {trackingEnabled && (
         <div style={{position:'fixed',top:'1rem',right:'1rem',background:gpsIsFresh?'#10b981':'#f59e0b',color:'white',padding:'0.875rem 1.5rem',borderRadius:'2rem',boxShadow:'0 6px 16px rgba(0,0,0,0.2)',zIndex:10001,display:'flex',gap:'0.875rem',alignItems:'center',fontSize:'0.9375rem',fontWeight:'700'}}>
           <div style={{width:'14px',height:'14px',background:'white',borderRadius:'50%',animation:'pulse 2s infinite'}}></div>
@@ -625,18 +569,18 @@ function RepZoneApp() {
         </div>
       )}
 
-      {/* Mobile Controls (simplified for now) */}
       {currentUser && (
-        <div style={{position:'fixed',bottom:'10px',left:'10px',right:'10px',background:'white',borderRadius:'1rem',padding:'1rem',boxShadow:'0 4px 12px rgba(0,0,0,0.2)',zIndex:1000,display:'flex',gap:'0.5rem',flexWrap:'wrap',justifyContent:'center'}}>
-          <button onClick={() => setTrackingEnabled(!trackingEnabled)} className="modern-button" style={{padding:'0.75rem 1.25rem',background:trackingEnabled?'#ef4444':'#10b981',color:'white',border:'none',borderRadius:'0.75rem',fontWeight:'700',fontSize:'0.875rem'}}>
-            {trackingEnabled ? 'Stop GPS' : 'Start GPS'}
+        <div className="control-panel">
+          <button onClick={() => setTrackingEnabled(!trackingEnabled)} className="modern-button" style={{padding:'0.75rem 1.25rem',background:trackingEnabled?'#ef4444':'#10b981',color:'white',border:'none',borderRadius:'0.75rem',fontWeight:'700',fontSize:'0.875rem',boxShadow:`0 2px 8px ${trackingEnabled?'rgba(239,68,68,0.3)':'rgba(16,185,129,0.3)'}`}}>
+            {trackingEnabled ? '⏹️ Stop GPS' : '▶️ Start GPS'}
           </button>
-          <select value={status} onChange={(e) => setStatus(e.target.value)} style={{padding:'0.75rem',border:'2px solid #e5e7eb',borderRadius:'0.75rem',fontSize:'0.875rem',fontWeight:'600'}}>
+          <select value={status} onChange={(e) => setStatus(e.target.value)} style={{padding:'0.75rem 1rem',border:'2px solid #e5e7eb',borderRadius:'0.75rem',fontSize:'0.875rem',fontWeight:'600',background:'white'}}>
             <option value="estimate">💰 A - Estimate</option>
             <option value="callback">📞 B - Callback</option>
             <option value="notinterested">📋 C - Not Int</option>
             <option value="flyer">📬 FD - Flyer</option>
           </select>
+          <input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note..." style={{padding:'0.75rem 1rem',border:'2px solid #e5e7eb',borderRadius:'0.75rem',fontSize:'0.875rem',fontWeight:'600',minWidth:'200px',flex:1}}/>
         </div>
       )}
     </div>

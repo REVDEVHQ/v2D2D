@@ -6,7 +6,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>RepZone Tracker V2</title>
 <script src="https://cdn.tailwindcss.com"></script>
-<script src="https://sea.refinedpainting.co/js/form_embed.js" type="text/javascript"></script>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { height: 100%; width: 100%; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', sans-serif; }
@@ -18,10 +17,8 @@
   @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
   @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-20px); } }
-  @keyframes progress { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
   @keyframes slideIn { from { transform: translateX(400px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes shimmer { 0% { background-position: -1000px 0; } 100% { background-position: 1000px 0; } }
   
   .tracking-indicator { animation: pulse 2s infinite; }
   .tab { padding: 0.875rem 1.25rem; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; transition: all 0.3s; font-size: 0.9375rem; }
@@ -34,7 +31,6 @@
   .modern-button { transition: all 0.2s; font-weight: 600; cursor: pointer; }
   .modern-button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
   .modern-button:active { transform: translateY(0); }
-  .loading-shimmer { background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 1000px 100%; animation: shimmer 2s infinite; }
   
   .hamburger-btn { display: none; position: fixed; top: 1rem; left: 1rem; width: 54px; height: 54px; background: white; border: none; border-radius: 1rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); cursor: pointer; z-index: 1002; flex-direction: column; align-items: center; justify-content: center; gap: 5px; transition: all 0.3s; }
   .hamburger-btn:hover { box-shadow: 0 6px 16px rgba(0,0,0,0.2); }
@@ -89,13 +85,6 @@
   .lead-type-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 16px rgba(0,0,0,0.2); }
   .lead-type-btn.active { border-color: white; box-shadow: 0 0 0 3px rgba(255,255,255,0.2); }
   
-  .zone-item { padding: 0.875rem; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.75rem; margin-bottom: 0.5rem; cursor: pointer; transition: all 0.2s; }
-  .zone-item:hover { background: rgba(255, 255, 255, 0.1); transform: translateX(4px); }
-  .zone-item.active { border-color: #3b82f6; background: rgba(59, 130, 246, 0.2); }
-  
-  .leaderboard-item { display: flex; align-items: center; gap: 0.875rem; padding: 0.875rem; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 0.75rem; margin-bottom: 0.5rem; transition: all 0.2s; }
-  .leaderboard-item:hover { background: rgba(255, 255, 255, 0.1); transform: translateX(4px); }
-  
   .rank-badge { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.875rem; }
   .rank-1 { background: linear-gradient(135deg, #fbbf24, #f59e0b); }
   .rank-2 { background: linear-gradient(135deg, #94a3b8, #64748b); }
@@ -119,17 +108,9 @@
   
   .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10003; padding: 1rem; animation: fadeIn 0.2s ease; }
   .modal-content { background: white; border-radius: 1.5rem; padding: 2rem; max-width: 440px; width: 100%; box-shadow: 0 20px 40px rgba(0,0,0,0.3); animation: fadeIn 0.3s ease; max-height: 90vh; overflow-y: auto; }
-  .modal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem; }
-  .modal-title { fontSize: 1.5rem; font-weight: bold; color: #1e293b; }
-  .modal-close { width: 40px; height: 40px; borderRadius: 50%; border: none; background: #f1f5f9; fontSize: 1.5rem; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.2s; }
-  .modal-close:hover { background: #e2e8f0; }
-  
-  .label-text { display: block; fontSize: 0.9375rem; font-weight: 700; margin-bottom: 0.5rem; color: #1e293b; }
-  .label-optional { color: #64748b; font-weight: 400; }
   
   .btn-primary { width: 100%; padding: 1rem; background: #3b82f6; color: white; border: none; border-radius: 0.75rem; fontSize: 1rem; font-weight: 700; box-shadow: 0 4px 12px rgba(59,130,246,0.3); transition: all 0.2s; cursor: pointer; }
   .btn-primary:hover { background: #2563eb; transform: translateY(-1px); box-shadow: 0 6px 16px rgba(59,130,246,0.4); }
-  .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
   
   .btn-secondary { padding: 1rem; background: #e5e7eb; color: #1e293b; border: none; border-radius: 0.75rem; fontSize: 1rem; font-weight: 700; transition: all 0.2s; cursor: pointer; }
   .btn-secondary:hover { background: #d1d5db; }
@@ -159,8 +140,9 @@
 <script type="text/babel">
 const { useState, useEffect, useRef } = React;
 
-const SUPABASE_URL = 'https://cfkkxkvfekjdnwwngtzd.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNma2t4a3ZmZWtqZG53d25ndHpkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjQ3MjQ3NTYsImV4cCI6MjA4MDMwMDc1Nn0.VlAsOfeSLXzajiH7CUyXWlV9hyL68D_F3yYg1R-jcIk';
+// USE THE CORRECT SUPABASE FROM THE SCREENSHOT
+const SUPABASE_URL = 'https://cytikhfyygkovnjtpsth.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN5dGlraGZ5eWdrb3ZuanRwc3RoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjA3MTc3NzYsImV4cCI6MjA3NjI5Mzc3Nn0.ItJObIXo_Ks8TEigj5RkUA4vXbze_3FMMIzYyVHrthQ';
 
 const ADMIN_IDS = ['user-1760858671762', 'user-1760855853315'];
 
@@ -228,8 +210,7 @@ async function reverseGeocode(lat, lng) {
     const response = await geocoder.geocode({ location: { lat, lng } });
     
     if (response.results && response.results.length > 0) {
-      const result = response.results[0];
-      return result.formatted_address;
+      return response.results[0].formatted_address;
     }
     return null;
   } catch (error) {
@@ -444,8 +425,34 @@ function RepZoneApp() {
       
       setPins(pinsRes.data || []);
       setZones(zonesRes.data || []);
-      setTeamMembers(teamRes.data || []);
-    } catch (e) {}
+      
+      // ENSURE ALL 9 USERS ARE IN DATABASE
+      const existingUsers = teamRes.data || [];
+      const requiredUsers = [
+        { id: 'user-1760858671762', name: 'RDHQ', role: 'admin', color: '#3b82f6' },
+        { id: 'user-1760855853315', name: 'JOSE', role: 'admin', color: '#10b981' },
+        { id: 'user-jose-guillen', name: 'Jose Guillen', role: 'admin', color: '#10b981' },
+        { id: 'user-ben', name: 'BEN', role: 'rep', color: '#3b82f6' },
+        { id: 'user-hector', name: 'HECTOR', role: 'rep', color: '#ec4899' },
+        { id: 'user-ruben', name: 'Ruben', role: 'rep', color: '#f59e0b' },
+        { id: 'user-declan', name: 'Declan', role: 'rep', color: '#06b6d4' },
+        { id: 'user-nathan', name: 'NATHAN', role: 'rep', color: '#8b5cf6' },
+        { id: 'user-christine', name: 'Christine', role: 'flyer', color: '#78350f' },
+        { id: 'user-mauricio', name: 'Mauricio', role: 'rep', color: '#94a3b8' }
+      ];
+      
+      const missingUsers = requiredUsers.filter(ru => !existingUsers.find(eu => eu.id === ru.id));
+      
+      if (missingUsers.length > 0) {
+        await supabase.current.from('team_members').insert(missingUsers);
+        const updatedTeam = await supabase.current.from('team_members').select('*');
+        setTeamMembers(updatedTeam.data || []);
+      } else {
+        setTeamMembers(existingUsers);
+      }
+    } catch (e) {
+      console.error('Load error:', e);
+    }
     setLoading(false);
   }
 
@@ -596,6 +603,50 @@ function RepZoneApp() {
     }
   }
 
+  async function deletePin(pinId) {
+    if (!confirm('Delete this pin?')) return;
+    if (!currentUser) return;
+    
+    try {
+      const { error } = await supabase.current.from('pins').delete().eq('id', pinId);
+      if (error) throw error;
+      setPins(prev => prev.filter(p => p.id !== pinId));
+      showToast('✅ Pin deleted!');
+    } catch (e) {
+      showToast('❌ Error: ' + e.message);
+    }
+  }
+
+  async function updatePinStatus(pinId, newStatus) {
+    if (!currentUser) return;
+    
+    try {
+      const { error } = await supabase.current.from('pins').update({ status: newStatus }).eq('id', pinId);
+      if (error) throw error;
+      setPins(prev => prev.map(p => p.id === pinId ? {...p, status: newStatus} : p));
+      showToast(`✅ Updated to ${LEAD_TYPES[newStatus]?.label}!`);
+    } catch (e) {
+      showToast('❌ Error: ' + e.message);
+    }
+  }
+
+  useEffect(() => {
+    window.deletePinGlobal = deletePin;
+    window.updatePinStatusGlobal = updatePinStatus;
+    window.openGHLCalendarGlobal = openGHLCalendar;
+    window.showCalendarModal = (data) => {
+      setCalendarData(data);
+      setShowCalendarModal(true);
+    };
+    
+    return () => {
+      delete window.deletePinGlobal;
+      delete window.updatePinStatusGlobal;
+      delete window.openGHLCalendarGlobal;
+      delete window.showCalendarModal;
+    };
+  }, [currentUser]);
+
   function getLeaderboard() {
     const now = new Date();
     const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
@@ -610,23 +661,13 @@ function RepZoneApp() {
       
       let count = 0;
       if (leaderboardType === 'd2d') {
-        // Only count "estimate" (A leads) for D2D
-        if (leaderboardPeriod === 'week') {
-          count = weekPins.filter(p => p.status === 'estimate').length;
-        } else if (leaderboardPeriod === 'day') {
-          count = dayPins.filter(p => p.status === 'estimate').length;
-        } else {
-          count = memberPins.filter(p => p.status === 'estimate').length;
-        }
+        if (leaderboardPeriod === 'week') count = weekPins.filter(p => p.status === 'estimate').length;
+        else if (leaderboardPeriod === 'day') count = dayPins.filter(p => p.status === 'estimate').length;
+        else count = memberPins.filter(p => p.status === 'estimate').length;
       } else {
-        // Count all flyer drops
-        if (leaderboardPeriod === 'week') {
-          count = weekPins.filter(p => p.status === 'flyer').length;
-        } else if (leaderboardPeriod === 'day') {
-          count = dayPins.filter(p => p.status === 'flyer').length;
-        } else {
-          count = memberPins.filter(p => p.status === 'flyer').length;
-        }
+        if (leaderboardPeriod === 'week') count = weekPins.filter(p => p.status === 'flyer').length;
+        else if (leaderboardPeriod === 'day') count = dayPins.filter(p => p.status === 'flyer').length;
+        else count = memberPins.filter(p => p.status === 'flyer').length;
       }
 
       const liveLocation = liveLocations.find(l => l.team_member_id === member.id);
@@ -843,7 +884,6 @@ function RepZoneApp() {
         setPins(prev => [newPin, ...prev]);
         setNote("");
         
-        // Send to GHL if it's an estimate with customer info
         if (custName && (custEmail || custPhone) && newPin.status === 'estimate') {
           try {
             await sendContactToGHL({ 
@@ -908,6 +948,50 @@ function RepZoneApp() {
         }
       });
 
+      let customerInfo = null, displayNote = pin.note || '';
+      if (pin.note && pin.note.includes(' - ') && pin.note.includes('@')) {
+        const parts = pin.note.split(' | ');
+        const custPart = parts[0];
+        displayNote = parts[1] || '';
+        const custDetails = custPart.split(' - ');
+        if (custDetails.length >= 2) {
+          customerInfo = { 
+            name: custDetails[0], 
+            email: custDetails[1], 
+            phone: custDetails[2] || null 
+          };
+        }
+      }
+      
+      const infoWindow = new google.maps.InfoWindow({
+        content: `
+          <div style="min-width:240px;padding:0;font-family:-apple-system,sans-serif;border-radius:12px;overflow:hidden">
+            <div style="background:linear-gradient(135deg, ${leadType.color} 0%, ${leadType.color}dd 100%);padding:16px;color:white">
+              <div style="font-size:24px;margin-bottom:4px">${leadType.icon}</div>
+              <div style="font-size:18px;font-weight:700">${leadType.label}${customerInfo ? ` - ${customerInfo.name}` : ''}</div>
+            </div>
+            <div style="padding:16px;background:white">
+              ${pin.address ? `<div style="padding:12px;background:#f8fafc;border-left:4px solid #64748b;margin-bottom:12px;border-radius:6px"><div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:6px">📍 ADDRESS</div><div style="font-weight:600;color:#1e293b;font-size:13px;line-height:1.5;margin-bottom:8px">${pin.address}</div>${customerInfo ? `<div style="border-top:1px solid #e2e8f0;padding-top:8px;margin-top:8px">${customerInfo.email ? `<div style="color:#3b82f6;font-size:13px;margin-bottom:4px;display:flex;align-items:center;gap:6px"><span>📧</span><span>${customerInfo.email}</span></div>` : ''}${customerInfo.phone ? `<div style="color:#3b82f6;font-size:13px;display:flex;align-items:center;gap:6px"><span>📞</span><span>${customerInfo.phone}</span></div>` : ''}</div>` : ''}</div>` : ''}
+              <div style="padding:10px;background:${user?.color || '#64748b'}15;border-left:4px solid ${user?.color || '#64748b'};margin-bottom:12px;border-radius:6px"><div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:4px">👤 REP</div><div style="font-weight:700;color:${user?.color || '#64748b'};font-size:14px">${pin.rep_name || 'Unknown'}</div></div>
+              ${displayNote ? `<div style="padding:10px;background:#f8fafc;border-left:4px solid #64748b;margin-bottom:12px;border-radius:6px"><div style="font-size:12px;color:#64748b;font-weight:600;margin-bottom:4px">📝 NOTE</div><div style="color:#1e293b;font-size:13px">${displayNote}</div></div>` : ''}
+              ${verification ? `<div style="padding:12px;background:${verification.color}15;border-left:4px solid ${verification.color};margin-bottom:12px;border-radius:6px"><div style="display:flex;align-items:center;gap:10px;margin-bottom:6px"><span style="font-size:24px">${verification.icon}</span><div><div style="font-weight:700;color:${verification.color};font-size:15px">${verification.label}</div><div style="font-size:13px;color:#64748b;margin-top:2px">Distance: <b>${pin.distance_from_pin} feet</b></div></div></div></div>` : ''}
+              <div style="font-size:12px;color:#94a3b8;margin-bottom:14px;text-align:center">${new Date(pin.created_at).toLocaleString()}</div>
+              <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px">${Object.entries(LEAD_TYPES).slice(0,3).map(([key, type]) => `<button onclick="window.updatePinStatusGlobal('${pin.id}','${key}')" class="modern-button" style="padding:10px 6px;background:${type.color};color:white;border:none;border-radius:8px;font-size:16px;font-weight:700;box-shadow:0 2px 6px ${type.color}40">${type.display}</button>`).join('')}</div>
+              <div style="display:grid;grid-template-columns:repeat(1,1fr);gap:6px;margin-bottom:12px">${Object.entries(LEAD_TYPES).slice(3).map(([key, type]) => `<button onclick="window.updatePinStatusGlobal('${pin.id}','${key}')" class="modern-button" style="padding:10px 6px;background:${type.color};color:white;border:none;border-radius:8px;font-size:16px;font-weight:700;box-shadow:0 2px 6px ${type.color}40">${type.display}</button>`).join('')}</div>
+              ${customerInfo ? `<button onclick="window.openGHLCalendarGlobal('${customerInfo.name}','${customerInfo.email || ''}','${customerInfo.phone || ''}','${pin.address || ''}')" class="modern-button" style="width:100%;padding:12px;background:#10b981;color:white;border:none;border-radius:10px;font-weight:700;font-size:14px;margin-bottom:8px;box-shadow:0 2px 8px rgba(16,185,129,0.3)">📅 Book Appointment</button>` : ''}
+              <button onclick="window.deletePinGlobal('${pin.id}')" class="modern-button" style="width:100%;padding:12px;background:#ef4444;color:white;border:none;border-radius:10px;font-weight:700;font-size:14px;box-shadow:0 2px 8px rgba(239,68,68,0.3)">🗑️ Delete Pin</button>
+            </div>
+          </div>
+        `,
+        maxWidth: 280
+      });
+      
+      marker.addListener('click', () => {
+        markersRef.current.forEach(m => { if (m.infoWindow) m.infoWindow.close(); });
+        infoWindow.open(mapInstanceRef.current, marker);
+      });
+      
+      marker.infoWindow = infoWindow;
       markersRef.current.push(marker);
     });
   }, [pins, teamMembers, mapReady]);
@@ -1025,8 +1109,8 @@ function RepZoneApp() {
       {showCustomerForm && pendingPinLocation && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <div className="modal-header">
-              <h3 className="modal-title">📋 Customer Info</h3>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'1.5rem'}}>
+              <h3 style={{fontSize:'1.5rem',fontWeight:'bold',color:'#1e293b'}}>📋 Customer Info</h3>
               <button 
                 onClick={() => { 
                   setShowCustomerForm(false); 
@@ -1035,11 +1119,11 @@ function RepZoneApp() {
                   setCustomerPhone(''); 
                   setCustomerEmail(''); 
                 }} 
-                className="modal-close"
+                style={{width:'40px',height:'40px',borderRadius:'50%',border:'none',background:'#f1f5f9',fontSize:'1.5rem',cursor:'pointer'}}
               >×</button>
             </div>
             <div style={{marginBottom:'1rem'}}>
-              <label className="label-text">Customer Name</label>
+              <label style={{display:'block',fontSize:'0.9375rem',fontWeight:'700',marginBottom:'0.5rem',color:'#1e293b'}}>Customer Name</label>
               <input 
                 value={customerName} 
                 onChange={(e) => setCustomerName(e.target.value)} 
@@ -1049,7 +1133,7 @@ function RepZoneApp() {
               />
             </div>
             <div style={{marginBottom:'1rem'}}>
-              <label className="label-text">Email <span className="label-optional">(optional)</span></label>
+              <label style={{display:'block',fontSize:'0.9375rem',fontWeight:'700',marginBottom:'0.5rem',color:'#1e293b'}}>Email <span style={{color:'#64748b',fontWeight:'400'}}>(optional)</span></label>
               <input 
                 value={customerEmail} 
                 onChange={(e) => setCustomerEmail(e.target.value)} 
@@ -1059,7 +1143,7 @@ function RepZoneApp() {
               />
             </div>
             <div style={{marginBottom:'1.5rem'}}>
-              <label className="label-text">Phone Number <span className="label-optional">(optional)</span></label>
+              <label style={{display:'block',fontSize:'0.9375rem',fontWeight:'700',marginBottom:'0.5rem',color:'#1e293b'}}>Phone Number <span style={{color:'#64748b',fontWeight:'400'}}>(optional)</span></label>
               <input 
                 value={customerPhone} 
                 onChange={(e) => setCustomerPhone(e.target.value)} 
@@ -1596,7 +1680,7 @@ function RepZoneApp() {
                     <div style={{textAlign:'right'}}>
                       <div style={{fontSize:'1.25rem',fontWeight:'700',color:'#1e293b'}}>{member.knockCount}</div>
                       <div style={{fontSize:'0.625rem',color:'#64748b',fontWeight:'600',textTransform:'uppercase'}}>
-                        {leaderboardType==='d2d'?'A LEADS':'FLYERS'}
+                       {leaderboardType==='d2d'?'A LEADS':'FLYERS'}
                       </div>
                     </div>
                   </div>

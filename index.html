@@ -783,7 +783,6 @@ function RepZoneApp() {
     });
   }, [pins, teamMembers, mapReady]);
 
-  // 🔥 FIX #2: ZONES NOW SHOW ON MAP WITH MUCH HIGHER OPACITY
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current) return;
     
@@ -798,10 +797,10 @@ function RepZoneApp() {
         const polygon = new google.maps.Polygon({
           paths: zone.points,
           strokeColor: zoneColor,
-          strokeOpacity: 0.95,  // ✅ INCREASED from 0.8
-          strokeWeight: 4,      // ✅ INCREASED from 3
+          strokeOpacity: 0.95,
+          strokeWeight: 4,
           fillColor: zoneColor,
-          fillOpacity: 0.35,    // ✅ INCREASED from 0.2 - NOW MUCH MORE VISIBLE!
+          fillOpacity: 0.35,
           map: mapInstanceRef.current,
           clickable: true
         });
@@ -860,10 +859,9 @@ function RepZoneApp() {
   const leaderboard = getLeaderboard();
   const isAdmin = ADMIN_IDS.includes(currentUser?.id);
 
-  // 🔥 FIX #1: FILTER ZONES BASED ON USER ROLE
   const visibleZones = isAdmin 
-    ? zones  // Admins see ALL zones
-    : zones.filter(z => z.assigned_to === currentUser?.id);  // Non-admins see ONLY their assigned zones
+    ? zones
+    : zones.filter(z => z.assigned_to === currentUser?.id);
 
   return (
     <div>
@@ -1098,7 +1096,6 @@ function RepZoneApp() {
                 </div>
               )}
 
-              {/* 🔥 FIX #1: SHOW FILTERED ZONES BASED ON ROLE */}
               {visibleZones.length > 0 && (
                 <div style={{marginTop:'1rem',padding:'1rem',background:'#eff6ff',borderRadius:'1rem',border:'2px solid #3b82f6'}}>
                   <div style={{fontWeight:'700',marginBottom:'0.75rem',color:'#1e293b',fontSize:'1.0625rem'}}>
@@ -1158,16 +1155,16 @@ function RepZoneApp() {
               <div style={{display:'flex',gap:'0.5rem',marginBottom:'1rem'}}>
                 {['day', 'week', 'all'].map(period => (
                   <button key={period} onClick={() => setLeaderboardPeriod(period)} className={`filter-btn ${leaderboardPeriod===period?'active':''}`} style={{flex:1}}>{period==='day'?'Today':period==='week'?'Week':'All Time'}</button>
-))}
-</div>
-<div style={{display:'flex',gap:'0.5rem',marginBottom:'1rem'}}>
-{['d2d', 'flyer'].map(type => (
-<button key={type} onClick={() => setLeaderboardType(type)} className={filter-btn ${leaderboardType===type?'active':''}} style={{flex:1}}>{type==='d2d'?'🚪 Door-to-Door':'📬 Flyer Drops'}</button>
-))}
-</div>
-<div style={{maxHeight:'400px',overflowY:'auto'}}>
-{leaderboard.map((member, idx) => (
-<div key={member.id} style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.875rem',background:'white',borderRadius:'0.75rem',marginBottom:'0.5rem',border:'2px solid #e5e7eb'}}>
+                ))}
+              </div>
+              <div style={{display:'flex',gap:'0.5rem',marginBottom:'1rem'}}>
+                {['d2d', 'flyer'].map(type => (
+                  <button key={type} onClick={() => setLeaderboardType(type)} className={`filter-btn ${leaderboardType===type?'active':''}`} style={{flex:1}}>{type==='d2d'?'🚪 Door-to-Door':'📬 Flyer Drops'}</button>
+                ))}
+              </div>
+              <div style={{maxHeight:'400px',overflowY:'auto'}}>
+                {leaderboard.map((member, idx) => (
+                  <div key={member.id} style={{display:'flex',alignItems:'center',gap:'0.75rem',padding:'0.875rem',background:'white',borderRadius:'0.75rem',marginBottom:'0.5rem',border:'2px solid #e5e7eb'}}>
 <div className={rank-badge ${idx<3?rank-${idx+1}:''}} style={idx>=3?{background:'#334155',color:'white'}:{color:'white'}}>{idx+1}</div>
 <div style={{width:'32px',height:'32px',borderRadius:'50%',background:member.color,display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:'700',fontSize:'0.875rem'}}>{member.name.charAt(0)}</div>
 <div style={{flex:1}}>

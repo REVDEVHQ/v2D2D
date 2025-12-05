@@ -363,7 +363,10 @@ function RepZoneApp() {
         supabase.current.from('team_members').select('*').order('role', { ascending: true })
       ]);
       setPins(pinsRes.data || []);
+      
+      console.log('✅ Loaded zones from DB:', zonesRes.data);
       setZones(zonesRes.data || []);
+      
       const existingUsers = teamRes.data || [];
       const requiredUsers = [
         { id: 'user-1760858671762', name: 'RDHQ', role: 'admin', color: '#3b82f6' },
@@ -600,13 +603,18 @@ function RepZoneApp() {
       map.setCenter({ lat: currentLocation.lat, lng: currentLocation.lng });
       map.setZoom(21);
     }
+    
     map.addListener('click', handleMapClick);
+    
     setMapReady(true);
   }, [loading]);
 
   async function handleMapClick(e) {
     const lat = e.latLng.lat();
     const lng = e.latLng.lng();
+    
+    console.log('🖱️ Map clicked:', mode, lat, lng);
+    
     if (mode === "drop-pin" && currentUser) {
       if (!currentLocation) { showToast('⚠️ Enable GPS tracking first!'); return; }
       if (!isGPSFresh(currentLocation)) { showToast(`⚠️ GPS data is stale!`); return; }
@@ -618,6 +626,7 @@ function RepZoneApp() {
       }
     } else if (mode === "draw-zone" && currentUser) {
       if (!ADMIN_IDS.includes(currentUser.id)) { showToast('⚠️ Only admins can create zones!'); return; }
+      console.log('✏️ Adding zone point');
       addZonePoint(lat, lng);
     }
   }
@@ -625,31 +634,51 @@ function RepZoneApp() {
   function addZonePoint(lat, lng) {
     const newPoints = [...zonePoints, { lat, lng }];
     setZonePoints(newPoints);
-    if (drawingPolygonRef.current) { drawingPolygonRef.current.setMap(null); }
-    if (newPoints.length >= 2) {
+    
+    if (drawingPolygonRef.current) { 
+      drawingPolygonRef.current.setMap(null); 
+    }
+    
+    if (newPoints.length >= 2 && mapInstanceRef.current) {
       drawingPolygonRef.current = new google.maps.Polygon({
         paths: newPoints,
         map: mapInstanceRef.current,
         fillColor: '#3b82f6',
         fillOpacity: 0.3,
         strokeColor: '#3b82f6',
-        strokeWeight: 3
+        strokeWeight: 3,
+        clickable: false
       });
+      console.log('📍 Drawing polygon updated with', newPoints.length, 'points');
     }
-    showToast(`📍 Point ${newPoints.length} added`);
+    
+    showToast(`📍 Point ${newPoints.length} added - Click to add more!`);
   }
 
   async function finishZone() {
     if (zonePoints.length < 3) { showToast('⚠️ Need at least 3 points!'); return; }
     const zoneName = prompt('Enter zone name:');
     if (!zoneName) return;
-    const newZone = { id: `zone-${Date.now()}`, name: zoneName, color: COLORS[zones.length % COLORS.length], points: zonePoints, created_by: currentUser.name, assigned_to: null, created_at: new Date().toISOString() };
+    const newZone = { 
+      id: `zone-${Date.now()}`, 
+      name: zoneName, 
+      color: COLORS[zones.length % COLORS.length], 
+      points: zonePoints, 
+      created_by: currentUser.name, 
+      assigned_to: null, 
+      created_at: new Date().toISOString() 
+    };
     try {
-      await supabase.current.from('zones').insert([newZone]);
+      const { data, error } = await supabase.current.from('zones').insert([newZone]).select();
+      if (error) throw error;
+      console.log('✅ Zone created in DB:', data);
       setZones(prev => [...prev, newZone]);
       cancelZoneDrawing();
       showToast('✅ Zone created!');
-    } catch (e) { showToast('❌ Error: ' + e.message); }
+    } catch (e) { 
+      console.error('❌ Zone creation error:', e);
+      showToast('❌ Error: ' + e.message); 
+    }
   }
 
   function cancelZoneDrawing() {
@@ -755,7 +784,12 @@ function RepZoneApp() {
   }, [pins, teamMembers, mapReady]);
 
   useEffect(() => {
-    if (!mapReady || !mapInstanceRef.current) return;
+    if (!mapReady || !mapInstanceRef.current) {
+      console.log('⏳ Map not ready yet for zones');
+      return;
+    }
+    
+    console.log('🗺️ Rendering zones:', zones.length);
     
     zonePolygonsRef.current.forEach(polygon => polygon.setMap(null));
     zonePolygonsRef.current = [];
@@ -764,6 +798,8 @@ function RepZoneApp() {
       if (zone.points?.length >= 3) {
         const assignedUser = teamMembers.find(u => u.id === zone.assigned_to);
         const zoneColor = assignedUser ? assignedUser.color : zone.color;
+        
+        console.log('✅ Creating polygon for zone:', zone.name, 'with', zone.points.length, 'points');
         
         const polygon = new google.maps.Polygon({
           paths: zone.points,
@@ -785,8 +821,12 @@ function RepZoneApp() {
         });
         
         zonePolygonsRef.current.push(polygon);
+      } else {
+        console.log('⚠️ Zone has insufficient points:', zone.name, zone.points?.length);
       }
     });
+    
+    console.log('✅ Total polygons rendered:', zonePolygonsRef.current.length);
   }, [zones, teamMembers, mapReady, mode, currentUser]);
 
   useEffect(() => {
@@ -1009,6 +1049,7 @@ function RepZoneApp() {
                   </div>
                 )}
                 {mode === 'drop-pin' && <div style={{padding:'0.75rem',background:'#d1fae5',borderRadius:'0.5rem',fontSize:'0.875rem',fontWeight:'600',color:'#065f46',textAlign:'center'}}>✅ Click map to drop pin!</div>}
+                {mode === 'draw-zone' && <div style={{padding:'0.75rem',background:'#dbeafe',borderRadius:'0.5rem',fontSize:'0.875rem',fontWeight:'600',color:'#1e40af',textAlign:'center'}}>✏️ Click map to draw zone points!</div>}
                 {mode === 'select' && <div style={{padding:'0.75rem',background:'#eff6ff',borderRadius:'0.5rem',fontSize:'0.875rem',fontWeight:'600',color:'#1e40af',textAlign:'center'}}>👆 Click zone to assign/manage</div>}
               </div>
 

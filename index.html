@@ -614,18 +614,38 @@ function RepZoneApp() {
     const lat = e.latLng.lat();
     const lng = e.latLng.lng();
     
+    // 🔥 FIX: CHECK ZONE MODE FIRST!
+    if (mode === "draw-zone" && currentUser) {
+      if (!ADMIN_IDS.includes(currentUser.id)) { 
+        showToast('⚠️ Only admins can create zones!'); 
+        return; 
+      }
+      addZoneCorner(lat, lng);
+      return; // 🔥 STOP HERE - don't continue to pin drop!
+    }
+    
+    // Only run pin drop logic if in drop-pin mode
     if (mode === "drop-pin" && currentUser) {
-      if (!currentLocation) { showToast('⚠️ Enable GPS tracking first!'); return; }
-      if (!isGPSFresh(currentLocation)) { showToast(`⚠️ GPS data is stale!`); return; }
+      if (!currentLocation) { 
+        showToast('⚠️ Enable GPS tracking first!'); 
+        return; 
+      }
+      if (!isGPSFresh(currentLocation)) { 
+        showToast(`⚠️ GPS data is stale!`); 
+        return; 
+      }
       if (fdMode) {
         await dropPinAtLocation(lat, lng, '', '', '', '');
       } else {
         setPendingPinLocation({ lat, lng });
         setShowCustomerForm(true);
       }
-    } else if (mode === "draw-zone" && currentUser) {
-      if (!ADMIN_IDS.includes(currentUser.id)) { showToast('⚠️ Only admins can create zones!'); return; }
-      addZoneCorner(lat, lng);
+      return;
+    }
+    
+    // If in select mode, do nothing on map click (only click zones)
+    if (mode === "select") {
+      return;
     }
   }
 
@@ -1187,7 +1207,6 @@ function RepZoneApp() {
     </div>
   );
 }
-
 ReactDOM.createRoot(document.getElementById('root')).render(<RepZoneApp />);
 </script>
 </body>

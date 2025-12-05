@@ -110,6 +110,8 @@
   .filter-btn { padding: 0.625rem 1rem; border-radius: 0.5rem; border: 2px solid #e5e7eb; cursor: pointer; font-weight: 600; font-size: 0.875rem; transition: all 0.2s; background: white; }
   .filter-btn.active { border-color: #3b82f6; background: #eff6ff; color: #3b82f6; }
   .filter-btn:hover { border-color: #3b82f6; }
+
+  .zone-corner-marker { width: 16px; height: 16px; background: #f59e0b; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 8px rgba(0,0,0,0.3); }
 </style>
 </head>
 <body>
@@ -164,17 +166,6 @@ function getVerificationStatus(distance) {
   if (distance <= 50) return { status: 'verified', color: '#10b981', icon: '✅', label: 'Verified' };
   if (distance <= 150) return { status: 'questionable', color: '#f59e0b', icon: '⚠️', label: 'Questionable' };
   return { status: 'suspicious', color: '#ef4444', icon: '🚫', label: 'Suspicious' };
-}
-
-function isPointInPolygon(point, polygon) {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].lng, yi = polygon[i].lat;
-    const xj = polygon[j].lng, yj = polygon[j].lat;
-    const intersect = ((yi > point.lat) !== (yj > point.lat)) && (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi);
-    if (intersect) inside = !inside;
-  }
-  return inside;
 }
 
 function isGPSFresh(location) {
@@ -300,7 +291,7 @@ function RepZoneApp() {
   const [calendarData, setCalendarData] = useState(null);
   const [pendingPinLocation, setPendingPinLocation] = useState(null);
   const [fdMode, setFdMode] = useState(false);
-  const [zonePoints, setZonePoints] = useState([]);
+  const [zoneCorners, setZoneCorners] = useState([]);
   const [selectedZone, setSelectedZone] = useState(null);
   const [showAssignModal, setShowAssignModal] = useState(false);
 
@@ -313,7 +304,7 @@ function RepZoneApp() {
   const userMarkerRef = useRef(null);
   const zonePolygonsRef = useRef([]);
   const liveMarkersRef = useRef([]);
-  const drawingPolygonRef = useRef(null);
+  const cornerMarkersRef = useRef([]);
 
   function showToast(message, duration = 4000) {
     setToastMessage(message);
@@ -363,8 +354,6 @@ function RepZoneApp() {
         supabase.current.from('team_members').select('*').order('role', { ascending: true })
       ]);
       setPins(pinsRes.data || []);
-      
-      console.log('✅ Loaded zones from DB:', zonesRes.data);
       setZones(zonesRes.data || []);
       
       const existingUsers = teamRes.data || [];
@@ -478,6 +467,18 @@ function RepZoneApp() {
       setShowAssignModal(false);
       setSelectedZone(null);
       showToast(`✅ Zone assigned to ${user.name}!`);
+    } catch (e) { showToast('❌ Error: ' + e.message); }
+  }
+
+  async function unassignZone(zoneId) {
+    try {
+      const zone = zones.find(z => z.id === zoneId);
+      const { error } = await supabase.current.from('zones').update({ assigned_to: null, color: COLORS[zones.indexOf(zone) % COLORS.length] }).eq('id', zoneId);
+      if (error) throw error;
+      setZones(prev => prev.map(z => z.id === zoneId ? {...z, assigned_to: null, color: COLORS[zones.indexOf(z) % COLORS.length]} : z));
+      setShowAssignModal(false);
+      setSelectedZone(null);
+      showToast(`✅ Zone unassigned!`);
     } catch (e) { showToast('❌ Error: ' + e.message); }
   }
 
@@ -613,8 +614,6 @@ function RepZoneApp() {
     const lat = e.latLng.lat();
     const lng = e.latLng.lng();
     
-    console.log('🖱️ Map clicked:', mode, lat, lng);
-    
     if (mode === "drop-pin" && currentUser) {
       if (!currentLocation) { showToast('⚠️ Enable GPS tracking first!'); return; }
       if (!isGPSFresh(currentLocation)) { showToast(`⚠️ GPS data is stale!`); return; }
@@ -626,68 +625,45 @@ function RepZoneApp() {
       }
     } else if (mode === "draw-zone" && currentUser) {
       if (!ADMIN_IDS.includes(currentUser.id)) { showToast('⚠️ Only admins can create zones!'); return; }
-      console.log('✏️ Adding zone point');
-      addZonePoint(lat, lng);
+      addZoneCorner(lat, lng);
     }
   }
 
-  function addZonePoint(lat, lng) {
-    const newPoints = [...zonePoints, { lat, lng }];
-    setZonePoints(newPoints);
-    
-    if (drawingPolygonRef.current) { 
-      drawingPolygonRef.current.setMap(null); 
-    }
-    
-    if (newPoints.length >= 2 && mapInstanceRef.current) {
-      drawingPolygonRef.current = new google.maps.Polygon({
-        paths: newPoints,
-        map: mapInstanceRef.current,
-        fillColor: '#3b82f6',
-        fillOpacity: 0.3,
-        strokeColor: '#3b82f6',
-        strokeWeight: 3,
-        clickable: false
-      });
-      console.log('📍 Drawing polygon updated with', newPoints.length, 'points');
-    }
-    
-    showToast(`📍 Point ${newPoints.length} added - Click to add more!`);
+  function addZoneCorner(lat, lng) {
+    const newCorners = [...zoneCorners, { lat, lng }];
+    setZoneCorners(newCorners);
+    showToast(`📍 Corner ${newCorners.length} added! ${newCorners.length >= 4 ? 'Click "Finish" to create zone.' : `Need ${4 - newCorners.length} more.`}`);
   }
 
-  async function finishZone() {
-    if (zonePoints.length < 3) { showToast('⚠️ Need at least 3 points!'); return; }
+  async function createZoneFromCorners() {
+    if (zoneCorners.length < 4) { showToast('⚠️ Need at least 4 corners!'); return; }
     const zoneName = prompt('Enter zone name:');
     if (!zoneName) return;
+    
     const newZone = { 
       id: `zone-${Date.now()}`, 
       name: zoneName, 
       color: COLORS[zones.length % COLORS.length], 
-      points: zonePoints, 
+      points: zoneCorners, 
       created_by: currentUser.name, 
       assigned_to: null, 
       created_at: new Date().toISOString() 
     };
+    
     try {
       const { data, error } = await supabase.current.from('zones').insert([newZone]).select();
       if (error) throw error;
-      console.log('✅ Zone created in DB:', data);
       setZones(prev => [...prev, newZone]);
       cancelZoneDrawing();
       showToast('✅ Zone created!');
     } catch (e) { 
-      console.error('❌ Zone creation error:', e);
       showToast('❌ Error: ' + e.message); 
     }
   }
 
   function cancelZoneDrawing() {
     setMode("drop-pin");
-    setZonePoints([]);
-    if (drawingPolygonRef.current) {
-      drawingPolygonRef.current.setMap(null);
-      drawingPolygonRef.current = null;
-    }
+    setZoneCorners([]);
   }
 
   async function dropPinAtLocation(lat, lng, custName, custPhone, custEmail, custNote) {
@@ -784,12 +760,7 @@ function RepZoneApp() {
   }, [pins, teamMembers, mapReady]);
 
   useEffect(() => {
-    if (!mapReady || !mapInstanceRef.current) {
-      console.log('⏳ Map not ready yet for zones');
-      return;
-    }
-    
-    console.log('🗺️ Rendering zones:', zones.length);
+    if (!mapReady || !mapInstanceRef.current) return;
     
     zonePolygonsRef.current.forEach(polygon => polygon.setMap(null));
     zonePolygonsRef.current = [];
@@ -798,8 +769,6 @@ function RepZoneApp() {
       if (zone.points?.length >= 3) {
         const assignedUser = teamMembers.find(u => u.id === zone.assigned_to);
         const zoneColor = assignedUser ? assignedUser.color : zone.color;
-        
-        console.log('✅ Creating polygon for zone:', zone.name, 'with', zone.points.length, 'points');
         
         const polygon = new google.maps.Polygon({
           paths: zone.points,
@@ -821,13 +790,39 @@ function RepZoneApp() {
         });
         
         zonePolygonsRef.current.push(polygon);
-      } else {
-        console.log('⚠️ Zone has insufficient points:', zone.name, zone.points?.length);
       }
     });
-    
-    console.log('✅ Total polygons rendered:', zonePolygonsRef.current.length);
   }, [zones, teamMembers, mapReady, mode, currentUser]);
+
+  useEffect(() => {
+    if (!mapReady || !mapInstanceRef.current) return;
+    
+    cornerMarkersRef.current.forEach(marker => marker.setMap(null));
+    cornerMarkersRef.current = [];
+    
+    zoneCorners.forEach((corner, idx) => {
+      const marker = new google.maps.Marker({
+        position: { lat: corner.lat, lng: corner.lng },
+        map: mapInstanceRef.current,
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 10,
+          fillColor: '#f59e0b',
+          fillOpacity: 1,
+          strokeColor: 'white',
+          strokeWeight: 3
+        },
+        label: {
+          text: (idx + 1).toString(),
+          color: 'white',
+          fontSize: '12px',
+          fontWeight: 'bold'
+        },
+        zIndex: 2000
+      });
+      cornerMarkersRef.current.push(marker);
+    });
+  }, [zoneCorners, mapReady]);
 
   useEffect(() => {
     if (!mapReady || !mapInstanceRef.current || !currentLocation || !currentUser) return;
@@ -934,15 +929,18 @@ function RepZoneApp() {
               <div style={{fontSize:'0.875rem',color:'#64748b',marginTop:'0.5rem'}}>By {selectedZone.created_by}</div>
             </div>
             {selectedZone.assigned_to ? (
-              <div style={{padding:'1rem',background:'#d1fae5',borderRadius:'0.75rem',border:'2px solid #10b981',marginBottom:'1rem'}}>
-                <div style={{display:'flex',alignItems:'center',gap:'1rem'}}>
-                  <div style={{width:'48px',height:'48px',borderRadius:'50%',background:teamMembers.find(u => u.id === selectedZone.assigned_to)?.color,display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:'bold',fontSize:'1.25rem'}}>{teamMembers.find(u => u.id === selectedZone.assigned_to)?.name.charAt(0)}</div>
-                  <div>
-                    <div style={{fontSize:'0.75rem',color:'#065f46',fontWeight:'700'}}>✅ ASSIGNED TO</div>
-                    <div style={{fontWeight:'700',fontSize:'1.125rem',color:'#065f46'}}>{teamMembers.find(u => u.id === selectedZone.assigned_to)?.name}</div>
+              <>
+                <div style={{padding:'1rem',background:'#d1fae5',borderRadius:'0.75rem',border:'2px solid #10b981',marginBottom:'1rem'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:'1rem'}}>
+                    <div style={{width:'48px',height:'48px',borderRadius:'50%',background:teamMembers.find(u => u.id === selectedZone.assigned_to)?.color,display:'flex',alignItems:'center',justifyContent:'center',color:'white',fontWeight:'bold',fontSize:'1.25rem'}}>{teamMembers.find(u => u.id === selectedZone.assigned_to)?.name.charAt(0)}</div>
+                    <div>
+                      <div style={{fontSize:'0.75rem',color:'#065f46',fontWeight:'700'}}>✅ ASSIGNED TO</div>
+                      <div style={{fontWeight:'700',fontSize:'1.125rem',color:'#065f46'}}>{teamMembers.find(u => u.id === selectedZone.assigned_to)?.name}</div>
+                    </div>
                   </div>
                 </div>
-              </div>
+                <button onClick={() => unassignZone(selectedZone.id)} className="modern-button" style={{width:'100%',padding:'1rem',background:'#f59e0b',color:'white',border:'none',borderRadius:'0.75rem',fontWeight:'700',marginBottom:'0.75rem'}}>🔓 Unassign Zone</button>
+              </>
             ) : (
               <div>
                 <p style={{fontSize:'0.9375rem',color:'#64748b',marginBottom:'1rem',fontWeight:'600'}}>👥 Assign this zone to a team member:</p>
@@ -1038,18 +1036,25 @@ function RepZoneApp() {
               <div className="stat-card" style={{marginBottom:'1rem'}}>
                 <h3 style={{fontSize:'1rem',fontWeight:'600',marginBottom:'1rem',color:'#1e293b'}}>🎯 Mode</h3>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'0.5rem',marginBottom:'1rem'}}>
-                  <div className={`mode-btn ${mode==='drop-pin'?'active':''}`} onClick={() => setMode('drop-pin')}>📍 Pin</div>
+                  <div className={`mode-btn ${mode==='drop-pin'?'active':''}`} onClick={() => { setMode('drop-pin'); cancelZoneDrawing(); }}>📍 Pin</div>
                   {isAdmin && <div className={`mode-btn ${mode==='draw-zone'?'active':''}`} onClick={() => setMode('draw-zone')}>✏️ Zone</div>}
-                  {isAdmin && <div className={`mode-btn ${mode==='select'?'active':''}`} onClick={() => setMode('select')}>👆 Select</div>}
+                  {isAdmin && <div className={`mode-btn ${mode==='select'?'active':''}`} onClick={() => { setMode('select'); cancelZoneDrawing(); }}>👆 Select</div>}
                 </div>
-                {mode === 'draw-zone' && zonePoints.length > 0 && (
-                  <div style={{display:'flex',gap:'0.5rem'}}>
-                    <button onClick={finishZone} className="modern-button" style={{flex:1,padding:'0.75rem',background:'#10b981',color:'white',border:'none',borderRadius:'0.5rem',fontWeight:'700'}}>✅ Finish ({zonePoints.length})</button>
-                    <button onClick={cancelZoneDrawing} className="modern-button" style={{padding:'0.75rem',background:'#ef4444',color:'white',border:'none',borderRadius:'0.5rem',fontWeight:'700'}}>✖</button>
+                {mode === 'draw-zone' && (
+                  <div style={{marginBottom:'1rem'}}>
+                    <div style={{padding:'0.75rem',background:'#dbeafe',borderRadius:'0.5rem',fontSize:'0.875rem',fontWeight:'600',color:'#1e40af',textAlign:'center',marginBottom:'0.75rem'}}>
+                      ✏️ Drop 4+ corner pins to mark zone boundaries!
+                      {zoneCorners.length > 0 && <div style={{marginTop:'0.5rem',fontSize:'0.8125rem'}}>Corners: {zoneCorners.length}</div>}
+                    </div>
+                    {zoneCorners.length >= 4 && (
+                      <div style={{display:'flex',gap:'0.5rem'}}>
+                        <button onClick={createZoneFromCorners} className="modern-button" style={{flex:1,padding:'0.75rem',background:'#10b981',color:'white',border:'none',borderRadius:'0.5rem',fontWeight:'700'}}>✅ Finish Zone</button>
+                        <button onClick={cancelZoneDrawing} className="modern-button" style={{padding:'0.75rem',background:'#ef4444',color:'white',border:'none',borderRadius:'0.5rem',fontWeight:'700'}}>✖</button>
+                      </div>
+                    )}
                   </div>
                 )}
                 {mode === 'drop-pin' && <div style={{padding:'0.75rem',background:'#d1fae5',borderRadius:'0.5rem',fontSize:'0.875rem',fontWeight:'600',color:'#065f46',textAlign:'center'}}>✅ Click map to drop pin!</div>}
-                {mode === 'draw-zone' && <div style={{padding:'0.75rem',background:'#dbeafe',borderRadius:'0.5rem',fontSize:'0.875rem',fontWeight:'600',color:'#1e40af',textAlign:'center'}}>✏️ Click map to draw zone points!</div>}
                 {mode === 'select' && <div style={{padding:'0.75rem',background:'#eff6ff',borderRadius:'0.5rem',fontSize:'0.875rem',fontWeight:'600',color:'#1e40af',textAlign:'center'}}>👆 Click zone to assign/manage</div>}
               </div>
 
